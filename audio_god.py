@@ -6,6 +6,7 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 import glob
 from pydub import AudioSegment, silence
+from pydub.playback import play
 from aubio import source, onset, tempo, pitch, notes
 import bpm_extractor as bpm
 import ffmpy
@@ -14,6 +15,8 @@ from os import path
 import requests
 import json
 import urllib
+import soundfile as sf
+import io
 
 # import echonest.remix.audio as audio
 
@@ -23,6 +26,8 @@ class AudioGod():
         self.shape = shape
         self.bpm = bpm
         self.samples_per_beat = 44100 * 60 // self.bpm
+        self.sonic_auth_index = 0
+        self.auth_codes = json.load('auth.json')
         
     def load_songs(self, dataset):
         (beats, slices, samples, channels) = self.shape
@@ -68,64 +73,54 @@ class AudioGod():
             song = AudioSegment.from_mp3(filename)
             song.export(filename.replace(".mp3", ".wav"), format="wav")
 
-    def change_tempos(self, dataset):
-        # make all wavs 120 bpm
-        for filename in glob.glob("datasets/%s/*.wav" % dataset):
-            bpm_adjust = self.bpm / bpm.get_file_bpm(filename)
-            
-            new_filename = re.sub('[()!@#$]', '', filename)
-            new_filename = new_filename.replace(dataset, dataset + "/%dbpm" % self.bpm).replace(' ','-')
-            
-            
-            ff = ffmpy.FFmpeg(
-                inputs={filename: None}, 
-                outputs={new_filename: ["-filter:a", "atempo=%.10f" % bpm_adjust]}
-            )
-            ff.run()
-
     def bin_tempos(self, dataset, transformations):
         for filename in glob.glob("datasets/%s/*.mp3" % dataset):
-            try:
-                bpm, beats = self.sonic_api_analysis(filename)
-            except:
-                print("Sonic API not working")
-                continue
-            # for beat in beats:
-            #     if beat['downbeat']:
-            #         slice_start = beat['time']
+            song = AudioSegment.from_mp3(filename)
+            bpm, beats_per_bar, beats = self.sonic_api_analysis(filename)
 
             for n in range(transformations):
-                new_bit_rate = int(44100 * (1 + (random.random()/2 - .5)))
-                file_bpm = bpm * (44100 / new_bit_rate)
-                tempo_bin = int(round(file_bpm, -1))
-                bpm_adjust = tempo_bin / file_bpm
 
-                tempo_dir = ("./datasets/%s/%dbpm") % (dataset, tempo_bin)
+                semitones = random.randint(-4,4) + (random.random() - .5) / 4
+                if semitones < 0:
+                    tempo_bins = [int(round(bpm, -1)) +
+                                n for n in range(-20, 1, 10)]
+                elif semitones > 0:
+                    tempo_bins = [int(round(bpm, -1)) +
+                                n for n in range(0, 21, 10)]
+                else:
+                    tempo_bins = [int(round(bpm, -1)) +
+                                n for n in range(-10, 11, 10)]
+                
+                new_tempo = np.random.choice(tempo_bins)
+                bpm_adjust = new_tempo / bpm + (random.random()-.5) / 250
+
+                tempo_dir = ("./datasets/%s/%dbpm") % (dataset, new_tempo)
                 if not path.exists(tempo_dir):
                     os.mkdir(tempo_dir)
-                
-                window = 31 + random.randint(-5, 5) * 2
-                compress = 30 - random.random() * 5
+
+                # window = 31 + random.randint(-5, 5) * 2
+                # compress = 30 - random.random() * 5
 
                 new_filename = re.sub('[()!@#$]', '-', filename)
                 new_filename = new_filename.replace(
-                    dataset, dataset + "/%dbpm" % tempo_bin).replace(
+                    dataset, dataset + "/%dbpm" % new_tempo).replace(
                     ' ', '-').replace(
-                    '.mp3', '_%d.mp3' % n)
+                    '.mp3', '_%d.wav' % n)
                 
-                print("pitch change: %d" % new_bit_rate)
+                print("pitch change: %.6f" % semitones)
                 print("tempo change: %.6f" % bpm_adjust)
 
+                self.sonic_api_bpm_pitch_adjust(filename, new_filename, bpm_adjust, semitones)
 
-
+                # FFMPEG
+                ##############
                 # commands = [
-                #     # "-acodec", "libmp3lame",
-                #     # "-acodec", "librubberband",
-                #     # "-qscale:a", "2",
-                #     "-ab", "128k",
-                #     "-ac", "1",' % ,
-                #     "-filter:a", "silenceremove=1:0:-50dB, asetrate=%d,atempo=%.6f,aresample=44100,dynaudnorm=g=%d:s=%.5f" % (
-                #         new_bit_rate, bpm_adjust, window, compress),
+                #     "-acodec", "libmp3lame",
+                # #     # "-acodec", "librubberband",
+                # #     # "-qscale:a", "2",
+                # #     "-ab", "128k",
+                #     #     "-ac", "1",' % ,silenceremove=1:0:-50dB, asetrate=%d,atempo=%.6f,aresample=44100,
+                #     "-filter:a", "dynaudnorm=g=%d:s=%.5f" % (window, compress),
                 # ]
 
                 # ff = ffmpy.FFmpeg(
@@ -136,7 +131,7 @@ class AudioGod():
 
     def sonic_api_analysis(self, filename):
         params = {
-            'access_id': 'd0b153ce-692e-4f3c-b439-bddd3fbb1705',
+            'access_id': self.auth_codes[str(self.sonic_auth_index)],
             'format': 'json'
         }
         files = {
@@ -145,21 +140,26 @@ class AudioGod():
         response = requests.post(
             'https://api.sonicAPI.com/analyze/tempo', files=files, params=params)
 
-        if response.status_code != 200:
-            return None
-        
-        content = json.loads(response.content)['auftakt_result']
-        beats = content['click_marks']
-        bpm = round(content['overall_tempo'])
-        
-        return bpm, beats
+        if response.status_code == 400:
+            self.sonic_auth_index += 1
+            response = requests.post(
+                'https://api.sonicAPI.com/analyze/tempo', files=files, params=params)
 
-    def sonic_api_bpm_pitch_adjust(self, filename, bpm_adjust, semitones):
+        if response.status_code == 200:
+            content = json.loads(response.content)['auftakt_result']
+            beats = content['click_marks']
+            beats_per_bar = content['clicks_per_bar']
+            bpm = round(content['overall_tempo'])
+        
+            return bpm, beats_per_bar, beats
+        
+        raise Exception("Bad Sonic API request")
+
+    def sonic_api_bpm_pitch_adjust(self, filename, new_filename, bpm_adjust, semitones):
         params = {
-            'access_id': 'd0b153ce-692e-4f3c-b439-bddd3fbb1705',
+            'access_id': self.auth_codes[str(self.sonic_auth_index)],
             'pitch_semitones': semitones,
             'tempo_factor': bpm_adjust,
-            'blocking': 'false',
             'format': 'wav',
         }
         files = {
@@ -167,47 +167,112 @@ class AudioGod():
         }
         response = requests.post(
             'https://api.sonicAPI.com/process/elastique', files=files, params=params)
-
-        if response.status_code != 200:
-            return None
         
-        song = urllib.urlretrieve(
-            response.content['href'], filename)
+        if response.status_code == 400:
+            self.sonic_auth_index += 1
+            response = requests.post(
+                'https://api.sonicAPI.com/process/elastique', files=files, params=params)
+        
+        if response.status_code == 200:
+            with open(new_filename, mode='bx') as f:
+                f.write(response.content)
 
-        return np.asarray(response.content)
+            print("Saved as: %s" % new_filename)
 
-    def slice_songs(self, dataset, tempo_bin, bars=1, save_rate=5):
-        for filename in glob.glob("datasets/%s/%sbpm/*.mp3" % (dataset, tempo_bin)):
-            song = AudioSegment.from_mp3(filename)
-            bpm, beats = self.sonic_api_analysis(filename)
+        raise("Bad Sonic API request")
+        # AudioSegment.from_raw(io.BytesIO(response.content)).export(new_filename, format='mp3', bitrate='128k')
+        # data, samplerate = sf.read(io.BytesIO(response.content))
+
+        # return data
+
+    def slice_songs(self, dataset, tempo_bin, bars=1):
+        
+        for filename in glob.glob("datasets/%s/%sbpm/*.wav" % (dataset, tempo_bin)):
+            print(filename)
+
+            song = AudioSegment.from_wav(filename)
+
+
+            bpm, beats_per_bar, beats = self.sonic_api_analysis(filename)
             
-            print("Actual BPM: %d" % int(bpm))
+            if (round(bpm, -1) != tempo_bin):
+                print("Wrong BPM :(")
+                continue
             
+            print("Actual BPM: %.3f" % bpm)
+
             downbeats = []
             for beat in beats:
                 if beat['downbeat']:
                     downbeats.append(beat)
-            # 60000 ms in minute
-            samples_per_beat = int(60 / tempo_bin * 44100)
             
-            slices = []
-        
-            for i in range(len(downbeats) // bars):
-                slice_start = round(downbeats[i]['time'] * 44100)
+            
+            
+            print("Slicing %s in %d bar segments" %
+                    (os.path.basename(filename), bars))
+            
+            for beat in range(0, len(beats), beats_per_bar * 2):
+                
+                # if curr beat tempo is close to desired tempo
+                if round(beats[beat]['bpm'], -1) == tempo_bin:
+                    
+                    # slice by size bars
+                    
+                    # if slice start not on beat -> move to beat
+                    if round(slice_start, -1) != round(beats[beat]['time'] * 44100):
+                        slice_start = round(beats[beat]['time'] * 44100)
+                    
+                    slice_stop = slice_start + samples_per_beat * bars
+                    
+                    try:
+                        bar_slice = song.get_sample_slice(slice_start, slice_stop)
+                        
+                        slice_start = slice_stop
+                        
+                        # export slice
+                        slice_export_path = "datasets/%s/%dbpm/slices/%s" % (
+                            dataset, tempo_bin, os.path.basename(filename).replace(".wav", "_slice%d.mp3" % beat))
+                        print(slice_export_path)
+                        bar_slice.export(slice_export_path, format="mp3")
+                    except:
+                        nothing = 0
+
+    def start_songs_at_first_beat(self, dataset):
+        for filename in glob.glob("datasets/%s/*.mp3" % dataset):
+            
+            song = AudioSegment.from_mp3(filename)
+            bpm, beats_per_bar, beats = self.sonic_api_analysis(filename)
+
+            samples_per_beat = int(60 / bpm * 44100 * 4)
+            start_beat = None
+            response = "replay"
+
+            # User input needed for determining first beat of song
+            for beat in range(beats_per_bar*2):
+                slice_start = round(beats[beat]['time'] * 44100)
                 slice_stop = slice_start + samples_per_beat
-                slices.append(song.get_sample_slice(slice_start, slice_stop))
-                if (i+1) % save_rate == 0:
-                    base = os.path.basename(filename)
-                    slices[i].export("samples/slices/%s" % base.replace(".mp3", "_slice%d.mp3" % int(i+1)), format="mp3")
-            
+                bar_slice = song.get_sample_slice(slice_start, slice_stop)
+                input('Playing slice %d. Press any key to continue\n' %
+                        (beat + 1))
+
+                while response.lower().strip() == 'replay':
+                    play(bar_slice + bar_slice)
+                    response = input("Is this loop correct? y/n/replay/skip\n")
+                if response.lower().strip() == 'skip':
+                    break
+                elif response.lower().strip() in ['y', 'yes']:
+                    start_beat = beat
+                    break
+
+            # If first beat -> run n random transformations
+            if start_beat:
+                song.get_sample_slice(
+                    start_sample=start_beat).export(out_f=filename)
+
+
 if __name__ == "__main__":
     ag = AudioGod(
         shape=(1, 210, 210, 2), 
         bpm=120
     )
-    # ag.bin_tempos('sound_cloud', 5)
-    song = ag.sonic_api_bpm_pitch_adjust('datasets/sound_cloud/6AM.mp3', .75, -6)
-    ag.slice_songs('sound_cloud', 80)
-    # print(songs)
-    
-
+    ag.slice_songs('sound_cloud', 110)

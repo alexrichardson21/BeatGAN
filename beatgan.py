@@ -351,13 +351,10 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        god = AudioGod()
+        god = AudioGod(self.shape)
 
         # Load from x training_dir
-        X_train = god.load_songs(
-            self.train_shape,
-            training_dir,
-        )
+        X_train = god.slice_songs('sound_cloud', self.bpm)
 
         start_time = datetime.datetime.now()
 
