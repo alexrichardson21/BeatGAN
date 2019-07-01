@@ -1,5 +1,6 @@
 from __future__ import division, print_function
 
+from keras_layer_normalization import LayerNormalization
 import numpy as np
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
@@ -29,23 +30,21 @@ from keras.layers.recurrent import LSTM
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
 from audio_god import AudioGod
-from scipy.io import wavfile
+
 # from keras_contrib.layers.normalization.instancenormalization import \
 #     InstanceNormalization
 
 class BeatGAN():
     def __init__(self):
-        self.channels = 2
+        self.channels = 1
         self.bpm = 110
-        self.beats = 16
-        self.sample_rate = 44100
+        self.sample_rate = 22050
         self.samples_per_beat = int(60 / self.bpm * self.sample_rate)
-        self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
-        self.shape = (422,228,2)
+        self.samples_per_bar = self.samples_per_beat * 4
         
         self.ngf = 16
         self.ndf = 16
-        self.noise = 10
+        self.noise = 5
         
         self.k = (8, 2)
         self.s = (2, 1)
@@ -65,9 +64,9 @@ class BeatGAN():
             sps = input('<samples_per_slice>\n')
             shape = (int(ns), int(sps))
 
-        self.shape = shape + (self.channels,)
-        self.slices = shape[0]
-        self.samples_per_slice = shape[1]
+        self.slices = int(ns)
+        self.samples_per_slice = int(sps)
+        self.shape = (self.slices, self.samples_per_slice, self.channels)
         
         optimizer = Adam(0.0002, 0.5)
         
@@ -101,8 +100,7 @@ class BeatGAN():
         
         # INIT
         ##################
-        slices, samples, channels = self.shape
-        nconvs = 5
+        nconvs = 6
         nlstms = 2
         m = [2**x for x in range(nlstms+nconvs)]
         m.reverse()
@@ -110,7 +108,7 @@ class BeatGAN():
         conv_mults = m[nlstms:]
         lstm_mults = m[:nlstms]
 
-        cnn_input_size = samples
+        cnn_input_size = self.samples_per_slice
         zero_pad_i = []
         
         # determine conv input size and necessary zero padding
@@ -126,11 +124,15 @@ class BeatGAN():
         print("GENERATOR CNN")
         cnn = Sequential()
 
-        cnn.add(Dense(
-            cnn_input_size * self.channels * lstm_mults[-1] * self.ngf, 
-            input_shape=(self.ngf * lstm_mults[-1],)))
+        # cnn.add(Dense(
+        #     cnn_input_size * self.channels * lstm_mults[-1] * self.ngf // 2,
+        #
+
+        # cnn.add(Dense(
+        #     cnn_input_size * self.channels * lstm_mults[-1] * self.ngf,
+        #     ))
         cnn.add(
-            Reshape((cnn_input_size, self.channels, lstm_mults[-1] * self.ngf)))
+            Reshape((cnn_input_size, self.channels, lstm_mults[-1] * self.ngf), input_shape=(6144,)))
         
         # n Convolutions
         for i, mult in enumerate(conv_mults):
@@ -175,28 +177,30 @@ class BeatGAN():
         
         convlstm.add(
             LSTM(
-                units=self.ngf*lstm_mults[0],
+                units=6144*2, 
                 return_sequences=True,
-                input_shape=(slices, self.noise)))
-        for mult in lstm_mults[1:]:
-            convlstm.add(
-                LSTM(
-                    units=self.ngf*mult, 
-                    return_sequences=True))
-        convlstm.add(BatchNormalization(momentum=.8))
+                input_shape=(self.slices, self.noise)))
+        convlstm.add(LayerNormalization())
+
+        convlstm.add(
+            LSTM(
+                units=6144,
+                return_sequences=True,))
+        convlstm.add(LayerNormalization())
+        
+        
         convlstm.add(TimeDistributed(cnn))
         
         convlstm.summary()
 
-        noise = Input(shape=(slices, self.noise))
+        noise = Input(shape=(self.slices, self.noise))
         song = convlstm(noise)
 
         return Model(noise, song)
 
     def build_new_dis(self):
-        slices, samples, channels = self.shape
         
-        nconvs = 4
+        nconvs = 5
         nlstms = 2
 
         m = [2**x for x in range(nlstms+nconvs)]
@@ -216,7 +220,7 @@ class BeatGAN():
             extended_bin = x[..., None]
             return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
         cnn.add(
-            Lambda(FFT, input_shape=(samples, channels))
+            Lambda(FFT, input_shape=(self.slices, self.channels))
         )
         
         for mult in conv_mults:
@@ -232,7 +236,8 @@ class BeatGAN():
             cnn.add(LeakyReLU(alpha=0.2))
         
         cnn.add(Flatten())
-        cnn.add(Dense(1, activation="sigmoid"))
+        # cnn.add(Dense(self.ndf*conv_mults[-1]))
+        cnn.add(Dropout(.2))
         
         cnn.summary()
 
@@ -244,10 +249,13 @@ class BeatGAN():
         
         convlstm = Sequential()
         convlstm.add(TimeDistributed(cnn, input_shape=self.shape))
-        convlstm.add(Dropout(.3))
         
-        for mult in lstm_mults:
-            convlstm.add(LSTM(units=self.ndf*mult, return_sequences=True))
+        for mult in [2,4]:
+            convlstm.add(LSTM(
+                units=6912*mult, 
+                return_sequences=True,
+                recurrent_dropout=0.2))
+            convlstm.add(LayerNormalization())
         convlstm.add(LSTM(units=1, activation="sigmoid"))
         
         convlstm.summary()
@@ -258,7 +266,7 @@ class BeatGAN():
 
         return Model(four_bars, sameity)
 
-    def train(self, training_dir, epochs, batch_size=32, save_interval=100, transform=50, preprocess=False):
+    def train(self, training_dir, epochs, batch_size=16, save_interval=10, transform=50, preprocess=False):
 
         # ---------------------
         #  Preprocessing
@@ -289,7 +297,7 @@ class BeatGAN():
             idx = np.random.randint(0, X_train.shape[0], half_batch)
             songs = X_train[idx]
 
-            noise = np.random.normal(0, 1, (half_batch, self.slices, self.noise))
+            noise = np.random.normal(0, 1, (half_batch, self.slices,self.noise))
 
             # Generate a half batch of new images
             gen_songs = self.generator.predict(noise)
@@ -346,7 +354,7 @@ class BeatGAN():
                     (dataset, self.bpm, epoch))
 
         for i, beat in enumerate(gen_beats):
-            np.reshape(beat, (-1, self.channels))
+            beat = np.reshape(beat, (-1, self.channels))
             wavfile.write(
                 'samples/%s_%dbpm/epoch%d/%d.wav' % (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
 

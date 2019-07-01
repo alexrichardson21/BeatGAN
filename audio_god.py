@@ -7,6 +7,7 @@ import random
 import re
 import sys
 import urllib
+import sox
 from os import path
 
 import ffmpy
@@ -64,7 +65,7 @@ class AudioGod():
                 song = AudioSegment.from_file(filename, format=in_format)
                 
                 if song.duration_seconds > 60 * 5:
-                    print('\tError: Song too long')
+                    print('\tError: Song longer than 5 minutes')
                     continue
                 
                 print('\tAnalyzing song ...')
@@ -114,12 +115,17 @@ class AudioGod():
             print("\tTempo change: %.2f  rand: %.6f" %
                   (bpm_adjust, bpm_rand))
 
-            print('\tTransforming song ...')
-            self.bpm_pitch_adjust(
-                filename,
-                new_filename,
-                bpm_adjust+bpm_rand,
-                semitones+semitones_rand)
+            print('\tTransforming song with sox ...')
+            tfm = sox.Transformer()
+            tfm.pitch(semitones+semitones_rand)
+            tfm.tempo(bpm_adjust+bpm_rand, "m")
+            tfm.convert(samplerate=8192, channels=1)
+            tfm.build(filename, new_filename)
+            # self.bpm_pitch_adjust(
+            #     filename,
+            #     new_filename,
+            #     bpm_adjust+bpm_rand,
+            #     semitones+semitones_rand)
             # print("\tSaved to %s" % new_filename)
             # FFMPEG
             ##############
