@@ -34,39 +34,47 @@ from audio_god import AudioGod
 # from keras_contrib.layers.normalization.instancenormalization import \
 #     InstanceNormalization
 
+# Shape: (slices, channels, samples_per_slice)
+
 class BeatGAN():
-    def __init__(self):
-        self.channels = 1
-        self.bpm = 110
-        self.sample_rate = 22050
-        self.samples_per_beat = int(60 / self.bpm * self.sample_rate)
-        self.samples_per_bar = self.samples_per_beat * 4
+    def __init__(self, tempo, rnn_size, cnn_size):
+        self.bpm = tempo
         
-        self.ngf = 16
-        self.ndf = 16
+        self.channels = 1
+        self.bit_rate = 128 * 1000
+        self.bit_depth = 16
+        self.sample_rate = 44100 #self.bit_rate // self.bit_depth
+        
+        # self.samples_per_beat = int(60 / self.bpm * self.sample_rate)
+        # self.samples_per_bar = self.samples_per_beat * 4
+        self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
+
+        
+        self.ngf = 8
+        self.ndf = 4
         self.noise = 5
         
         self.k = (8, 2)
         self.s = (2, 1)
 
         
-        shape = None
-        slice_combos = []
-        for i in range(1, int(self.samples_per_bar**0.5)+1):
-            if self.samples_per_bar % i == 0:
-                slice_combos += [(i, self.samples_per_bar // i)]
-        slice_combos += [(b, a) for a, b in slice_combos]
+        # shape = None
+        # slice_combos = []
+        # for i in range(1, int(self.samples_per_bar**0.5)+1):
+        #     if self.samples_per_bar % i == 0:
+        #         slice_combos += [(i, self.samples_per_bar // i)]
+        # slice_combos += [(b, a) for a, b in slice_combos]
 
-        while shape not in slice_combos:
-            [print(combo) for combo in slice_combos]
-            print('Pick same combo:')
-            ns = input('<num_slices>\n')
-            sps = input('<samples_per_slice>\n')
-            shape = (int(ns), int(sps))
+        # while shape not in slice_combos:
+        #     [print(combo) for combo in slice_combos]
+        #     print('Pick same combo:')
+        #     ns = input('<num_slices>\n')
+        #     sps = input('<samples_per_slice>\n')
+        #     shape = (int(ns), int(sps))
 
-        self.slices = int(ns)
-        self.samples_per_slice = int(sps)
-        self.shape = (self.slices, self.samples_per_slice, self.channels)
+        self.slices = rnn_size#int(ns)
+        self.samples_per_slice = cnn_size#int(sps)
+        self.shape = (self.slices, self.channels, self.samples_per_slice)
         
         optimizer = Adam(0.0002, 0.5)
         
@@ -100,23 +108,23 @@ class BeatGAN():
         
         # INIT
         ##################
-        nconvs = 6
-        nlstms = 2
+        nconvs = 7
+        nlstms = 3
         m = [2**x for x in range(nlstms+nconvs)]
         m.reverse()
         
         conv_mults = m[nlstms:]
         lstm_mults = m[:nlstms]
 
-        cnn_input_size = self.samples_per_slice
+        cnn_input_dim = self.samples_per_slice // 2 + 1
         zero_pad_i = []
         
         # determine conv input size and necessary zero padding
         for i in range(nconvs):
-            if not (cnn_input_size / 2).is_integer():
-                cnn_input_size -= 1
+            if not (cnn_input_dim / 2).is_integer():
+                cnn_input_dim -= 1
                 zero_pad_i += [nconvs-i-1]
-            cnn_input_size //= 2
+            cnn_input_dim //= 2
         
                
         # define CNN model
@@ -124,49 +132,45 @@ class BeatGAN():
         print("GENERATOR CNN")
         cnn = Sequential()
 
-        # cnn.add(Dense(
-        #     cnn_input_size * self.channels * lstm_mults[-1] * self.ngf // 2,
-        #
-
-        # cnn.add(Dense(
-        #     cnn_input_size * self.channels * lstm_mults[-1] * self.ngf,
-        #     ))
+        cnn_input_size = cnn_input_dim*self.channels*lstm_mults[-1]*self.ngf
+        
         cnn.add(
-            Reshape((cnn_input_size, self.channels, lstm_mults[-1] * self.ngf), input_shape=(6144,)))
+            Reshape((self.channels, cnn_input_dim, lstm_mults[-1] * self.ngf), input_shape=(cnn_input_size,)))
         
         # n Convolutions
         for i, mult in enumerate(conv_mults):
             cnn.add(Conv2DTranspose(
                 filters=self.ngf*mult,
-                kernel_size=(8, 2),
-                strides=(2, 1),
+                kernel_size=(1, 8),
+                strides=(1, 2),
                 padding='same',
             ))
             if i in zero_pad_i:
-                cnn.add(ZeroPadding2D(padding=((1, 0), (0, 0))))
+                cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
             cnn.add(BatchNormalization(momentum=.8))
             cnn.add(Activation("relu"))
 
         # Final Convolution
         cnn.add(Conv2DTranspose(
                 filters=2,
-                kernel_size=(4, 2),
+                kernel_size=(1, 4),
                 strides=1,
                 padding='same',
-                activation='tanh',
+                activation='sigmoid',
                 ))
         
-        # in (None, 228, 2, 2)
-        # out (None, 228, 2)
+        # in (None, 1, 211, 2)
+        # out (None, 1, 420)
         def iFFT(x):
             real, imag = tf.split(x, 2, axis=-1)
-            
             x = tf.complex(real, imag) 
             x = tf.squeeze(x, axis=[-1])
             x = tf.spectral.irfft(x)
             
             return x
+        # cnn.summary()
         cnn.add(Lambda(iFFT))
+        cnn.add(Activation('tanh'))
         
         cnn.summary()
 
@@ -177,14 +181,20 @@ class BeatGAN():
         
         convlstm.add(
             LSTM(
-                units=6144*2, 
+                units=cnn_input_size*4, 
                 return_sequences=True,
                 input_shape=(self.slices, self.noise)))
         convlstm.add(LayerNormalization())
 
         convlstm.add(
             LSTM(
-                units=6144,
+                units=cnn_input_size*2,
+                return_sequences=True,))
+        convlstm.add(LayerNormalization())
+
+        convlstm.add(
+            LSTM(
+                units=cnn_input_size,
                 return_sequences=True,))
         convlstm.add(LayerNormalization())
         
@@ -200,11 +210,12 @@ class BeatGAN():
 
     def build_new_dis(self):
         
-        nconvs = 5
+        # INIT
+        ##################
+        nconvs = 8
         nlstms = 2
-
         m = [2**x for x in range(nlstms+nconvs)]
-
+        
         conv_mults = m[:nconvs]
         lstm_mults = m[nconvs:]
         
@@ -214,21 +225,22 @@ class BeatGAN():
         
         cnn = Sequential()
 
-        # in: (228, 2)  out (228, 2, 2)
+        # in: (None, 1, 420)  out: (None, 1, 211, 2)
         def FFT(x):
             x = tf.spectral.rfft(x)
             extended_bin = x[..., None]
             return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
+        
         cnn.add(
-            Lambda(FFT, input_shape=(self.slices, self.channels))
+            Lambda(FFT, input_shape=(self.channels, self.samples_per_slice))
         )
         
         for mult in conv_mults:
             cnn.add(
                 Conv2D(
                     filters=self.ndf*mult,
-                    kernel_size=(6,2),
-                    strides=(2,1),
+                    kernel_size=(1,6),
+                    strides=(1,2),
                     padding='same',
                 )
             )
@@ -252,9 +264,9 @@ class BeatGAN():
         
         for mult in [2,4]:
             convlstm.add(LSTM(
-                units=6912*mult, 
+                units=512*mult, 
                 return_sequences=True,
-                recurrent_dropout=0.2))
+                recurrent_dropout=0.1))
             convlstm.add(LayerNormalization())
         convlstm.add(LSTM(units=1, activation="sigmoid"))
         
@@ -266,7 +278,7 @@ class BeatGAN():
 
         return Model(four_bars, sameity)
 
-    def train(self, training_dir, epochs, batch_size=16, save_interval=10, transform=50, preprocess=False):
+    def train(self, training_dir, epochs, batch_size=16, save_interval=10, preprocess=False):
 
         # ---------------------
         #  Preprocessing
@@ -276,12 +288,12 @@ class BeatGAN():
         god = AudioGod(training_dir, self.bpm, 1, self.shape)
 
         if preprocess:
-            god.preprocess(self.shape)
+            god.preprocess()
         X_train = god.load_slices()
 
         # -1 to 1
-        self.db = max([X_train.max(), abs(X_train.min())])
-        X_train = X_train / self.db
+        db = max([X_train.max(), abs(X_train.min())])
+        X_train = X_train / db
 
         start_time = datetime.datetime.now()
 
@@ -337,6 +349,7 @@ class BeatGAN():
 
     def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
+        
         noise = np.random.normal(0, 1, (NUM_BEATS, self.slices, self.noise))
         
         gen_beats = self.generator.predict(noise)
@@ -356,8 +369,37 @@ class BeatGAN():
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
             wavfile.write(
-                'samples/%s_%dbpm/epoch%d/%d.wav' % (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
+                'samples/%s_%dbpm/epoch%d/%d.wav' % 
+                (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
+
+
+def parse_command_line_args():
+    parser = argparse.ArgumentParser(description='AI Generated Art Bitch')
+    parser.add_argument('epochs', type=int,
+                        help='number of epochs')
+    parser.add_argument('training_dir', type=str,
+                        help='filepath of training set (if wikiart url is given then filepath becomes the save dir)')
+    parser.add_argument('tempo', type=int,
+                        help='Tempo of song output')
+    parser.add_argument('rnn size', type=int,
+                        help='size of recurrent layer')
+    parser.add_argument('cnn size', type=int,
+                        help='size of convolutional layer')
+    parser.add_argument('-b', '--batchsize',
+                        default=16, type=int, help='size of batches per epoch')
+    parser.add_argument('-s', '--saveinterval',
+                        type=int, default=10, help='interval to save sample images')
+    parser.add_argument('-p', '--preprocess',
+                        type=bool, default=False, help='preprocess songs')
+    return vars(parser.parse_args())
 
 if __name__ == '__main__':
-    bg = BeatGAN()
-    bg.train('fkn_bs', 200)
+    args = parse_command_line_args()
+    bg = BeatGAN(args['tempo'],
+                 args['rnn size'],
+                 args['cnn size'])
+    bg.train(training_dir=args['training_dir'],
+             epochs=args['epochs'],
+             batch_size=args['batchsize'],
+             save_interval=args['saveinterval'],
+             preprocess=args['preprocess'])

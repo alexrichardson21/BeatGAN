@@ -5,11 +5,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Current File",
+      "name": "BeatGAN 120bpm",
       "type": "python",
       "request": "launch",
-      "program": "${file}",
-      "console": "integratedTerminal"
+      "program": "${workspaceFolder}/beatgan.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": ["1000", "alex_sc", "120", "210", "420"]
     },
     {
       "name": "Python: Current File",
