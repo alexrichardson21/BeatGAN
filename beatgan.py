@@ -26,13 +26,9 @@ from keras.layers import Activation, Dense, Dropout, Flatten, Input, Reshape, Bi
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import Conv2D, Conv2DTranspose, ZeroPadding2D
 from keras.layers.recurrent import LSTM
-# from keras.layers import ConvRecurrent2D
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
 from audio_god import AudioGod
-
-# from keras_contrib.layers.normalization.instancenormalization import \
-#     InstanceNormalization
 
 # Shape: (slices, channels, samples_per_slice)
 
@@ -50,9 +46,9 @@ class BeatGAN():
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
-        self.ngf = 8
-        self.ndf = 4
-        self.noise = 5
+        self.ngf = 16
+        self.ndf = 16
+        self.noise = 200
         
         self.k = (8, 2)
         self.s = (2, 1)
@@ -72,8 +68,8 @@ class BeatGAN():
         #     sps = input('<samples_per_slice>\n')
         #     shape = (int(ns), int(sps))
 
-        self.slices = rnn_size#int(ns)
-        self.samples_per_slice = cnn_size#int(sps)
+        self.slices = rnn_size #int(ns)
+        self.samples_per_slice = cnn_size #int(sps)
         self.shape = (self.slices, self.channels, self.samples_per_slice)
         
         optimizer = Adam(0.0002, 0.5)
@@ -90,7 +86,7 @@ class BeatGAN():
 
 
         # The generator takes noise as input and generated imgs
-        z = Input((self.slices, self.noise))
+        z = Input((self.noise,))
         song = self.generator(z)
 
         # For the combined model we will only train the generator
@@ -105,62 +101,89 @@ class BeatGAN():
         self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
     
     def build_new_gen(self):
-        
-        # INIT
-        ##################
-        nconvs = 7
-        nlstms = 3
-        m = [2**x for x in range(nlstms+nconvs)]
-        m.reverse()
-        
-        conv_mults = m[nlstms:]
-        lstm_mults = m[:nlstms]
-
-        cnn_input_dim = self.samples_per_slice // 2 + 1
-        zero_pad_i = []
-        
-        # determine conv input size and necessary zero padding
-        for i in range(nconvs):
-            if not (cnn_input_dim / 2).is_integer():
-                cnn_input_dim -= 1
-                zero_pad_i += [nconvs-i-1]
-            cnn_input_dim //= 2
-        
-               
+                   
         # define CNN model
         ########################
         print("GENERATOR CNN")
         cnn = Sequential()
-
-        cnn_input_size = cnn_input_dim*self.channels*lstm_mults[-1]*self.ngf
         
         cnn.add(
-            Reshape((self.channels, cnn_input_dim, lstm_mults[-1] * self.ngf), input_shape=(cnn_input_size,)))
-        
-        # n Convolutions
-        for i, mult in enumerate(conv_mults):
-            cnn.add(Conv2DTranspose(
-                filters=self.ngf*mult,
-                kernel_size=(1, 8),
+            Reshape((self.channels, 1, self.ngf*32), 
+            input_shape=(self.ngf*32,)
+        ))
+
+        # Conv 1
+        cnn.add(Conv2DTranspose(
+                filters=self.ngf*16,
+                kernel_size=(1, 6),
                 strides=(1, 2),
                 padding='same',
-            ))
-            if i in zero_pad_i:
-                cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
-            cnn.add(BatchNormalization(momentum=.8))
-            cnn.add(Activation("relu"))
+                use_bias=False,
+                ))
+        # cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
+        cnn.add(BatchNormalization(momentum=.8))
+        cnn.add(Activation("relu"))
 
-        # Final Convolution
+        # Conv 2
+        cnn.add(Conv2DTranspose(
+                filters=self.ngf*8,
+                kernel_size=(1, 6),
+                strides=(1, 2),
+                padding='same',
+                use_bias=False,
+                ))
+        cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
+        cnn.add(BatchNormalization(momentum=.8))
+        cnn.add(Activation("relu"))
+
+        # Conv 3
+        cnn.add(Conv2DTranspose(
+                filters=self.ngf*4,
+                kernel_size=(1, 6),
+                strides=(1, 2),
+                padding='same',
+                use_bias=False,
+                ))
+        cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
+        cnn.add(BatchNormalization(momentum=.8))
+        cnn.add(Activation("relu"))
+
+        # Conv 4
+        cnn.add(Conv2DTranspose(
+                filters=self.ngf*2,
+                kernel_size=(1, 12),
+                strides=(1, 4),
+                padding='same',
+                use_bias=False,
+                ))
+        # cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
+        cnn.add(BatchNormalization(momentum=.8))
+        cnn.add(Activation("relu"))
+
+        # Conv 5
+        cnn.add(Conv2DTranspose(
+                filters=self.ngf,
+                kernel_size=(1, 12),
+                strides=(1, 4),
+                padding='same',
+                use_bias=False,
+                ))
+        cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
+        cnn.add(BatchNormalization(momentum=.8))
+        cnn.add(Activation("relu"))
+
+        # Final Conv
         cnn.add(Conv2DTranspose(
                 filters=2,
-                kernel_size=(1, 4),
+                kernel_size=(1, 3),
                 strides=1,
                 padding='same',
-                activation='sigmoid',
-                ))
+                use_bias=False,
+        ))
+        cnn.add(Activation("tanh"))
         
-        # in (None, 1, 211, 2)
-        # out (None, 1, 420)
+        # Inverse Fast Fourier Transformation Layer
+        # in (None, 1, 211, 2)  out (None, 1, 420)
         def iFFT(x):
             real, imag = tf.split(x, 2, axis=-1)
             x = tf.complex(real, imag) 
@@ -168,56 +191,55 @@ class BeatGAN():
             x = tf.spectral.irfft(x)
             
             return x
-        # cnn.summary()
         cnn.add(Lambda(iFFT))
-        cnn.add(Activation('tanh'))
         
         cnn.summary()
 
+        
+        
         # define ConvLSTM model
         #########################
         print("GENERATOR LSTM")
         convlstm = Sequential()
         
+        # Init Layer
+        convlstm.add(
+            Dense(self.slices*self.ngf*64, input_shape=(self.noise,)))
+        convlstm.add(Reshape((self.slices, self.ngf*64)))
+
+        # LSTM 1
         convlstm.add(
             LSTM(
-                units=cnn_input_size*4, 
+                units=self.ngf*64,
                 return_sequences=True,
-                input_shape=(self.slices, self.noise)))
+                use_bias=False,
+            ))
         convlstm.add(LayerNormalization())
+        convlstm.add(Activation('relu'))
 
+        # LSTM 2
         convlstm.add(
             LSTM(
-                units=cnn_input_size*2,
-                return_sequences=True,))
+                units=self.ngf*32,
+                return_sequences=True,
+                use_bias=False,
+            ))
         convlstm.add(LayerNormalization())
-
-        convlstm.add(
-            LSTM(
-                units=cnn_input_size,
-                return_sequences=True,))
-        convlstm.add(LayerNormalization())
+        convlstm.add(Activation('relu'))
         
-        
+        # Time Distrubute Thru CNN
         convlstm.add(TimeDistributed(cnn))
+        convlstm.add(Activation('tanh'))
         
         convlstm.summary()
 
-        noise = Input(shape=(self.slices, self.noise))
+        
+        noise = Input(shape=(self.noise,))
         song = convlstm(noise)
 
         return Model(noise, song)
 
     def build_new_dis(self):
-        
-        # INIT
-        ##################
-        nconvs = 8
-        nlstms = 2
-        m = [2**x for x in range(nlstms+nconvs)]
-        
-        conv_mults = m[:nconvs]
-        lstm_mults = m[nconvs:]
         
         # define CNN model
         ########################
@@ -225,30 +247,83 @@ class BeatGAN():
         
         cnn = Sequential()
 
+        # Fast Fourier Transformation Layer
         # in: (None, 1, 420)  out: (None, 1, 211, 2)
         def FFT(x):
             x = tf.spectral.rfft(x)
             extended_bin = x[..., None]
             return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
-        
         cnn.add(
             Lambda(FFT, input_shape=(self.channels, self.samples_per_slice))
         )
         
-        for mult in conv_mults:
-            cnn.add(
-                Conv2D(
-                    filters=self.ndf*mult,
-                    kernel_size=(1,6),
-                    strides=(1,2),
-                    padding='same',
-                )
-            )
-            cnn.add(BatchNormalization(momentum=0.8))
-            cnn.add(LeakyReLU(alpha=0.2))
+        # Conv 1
+        cnn.add(Conv2D(
+            filters=self.ndf,
+            kernel_size=(1, 8),
+            strides=(1, 4),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 2
+        cnn.add(Conv2D(
+            filters=self.ndf*2,
+            kernel_size=(1, 8),
+            strides=(1, 4),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 3
+        cnn.add(Conv2D(
+            filters=self.ndf*4,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 4
+        cnn.add(Conv2D(
+            filters=self.ndf*8,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 5
+        cnn.add(Conv2D(
+            filters=self.ndf*16,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 6
+        cnn.add(Conv2D(
+            filters=self.ndf*32,
+            kernel_size=(1, 2),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
         
         cnn.add(Flatten())
-        # cnn.add(Dense(self.ndf*conv_mults[-1]))
         cnn.add(Dropout(.2))
         
         cnn.summary()
@@ -256,23 +331,40 @@ class BeatGAN():
         
         # define ConvLSTM model
         #########################
-        # input shape: (slices, samples per slice, channels)
         print("DISCRIMINATOR LSTM")
         
         convlstm = Sequential()
+
+        # Time Distribute Thru CNN
         convlstm.add(TimeDistributed(cnn, input_shape=self.shape))
         
-        for mult in [2,4]:
-            convlstm.add(LSTM(
-                units=512*mult, 
-                return_sequences=True,
-                recurrent_dropout=0.1))
-            convlstm.add(LayerNormalization())
-        convlstm.add(LSTM(units=1, activation="sigmoid"))
+        # LSTM 1
+        convlstm.add(LSTM(
+            units=self.ndf*64,
+            return_sequences=True,
+            recurrent_dropout=0.1,
+            use_bias=False,
+        ))
+        convlstm.add(LayerNormalization())
+        convlstm.add(LeakyReLU(alpha=0.2))
+
+        # LSTM 2
+        convlstm.add(LSTM(
+            units=self.ndf*128,
+            return_sequences=True,
+            recurrent_dropout=0.1,
+            use_bias=False,
+        ))
+        convlstm.add(LayerNormalization())
+        convlstm.add(LeakyReLU(alpha=0.2))
+        
+        convlstm.add(Flatten())
+        convlstm.add(Dropout(.1))
+        convlstm.add(Dense(1, activation="sigmoid"))
         
         convlstm.summary()
-
         
+
         four_bars = Input(shape=self.shape)
         sameity = convlstm(four_bars)
 
@@ -309,7 +401,7 @@ class BeatGAN():
             idx = np.random.randint(0, X_train.shape[0], half_batch)
             songs = X_train[idx]
 
-            noise = np.random.normal(0, 1, (half_batch, self.slices,self.noise))
+            noise = np.random.normal(0, 1, (half_batch, self.noise))
 
             # Generate a half batch of new images
             gen_songs = self.generator.predict(noise)
@@ -326,7 +418,7 @@ class BeatGAN():
             # ---------------------
 
             noise = np.random.normal(
-                0, 1, (batch_size, self.slices, self.noise))
+                0, 1, (batch_size, self.noise))
 
             # The generator wants the discriminator to label the generated samples as same (ones)
             same_y = np.ones((batch_size, 1))
@@ -345,13 +437,12 @@ class BeatGAN():
                 self.save_beats(epoch, training_dir)
 
         # Save generator
-        self.generator.save('art_dc_gan_generator.h5')
+        self.generator.save('beat_gan_generator.h5')
 
     def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
         
-        noise = np.random.normal(0, 1, (NUM_BEATS, self.slices, self.noise))
-        
+        noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
         gen_beats = self.generator.predict(noise)
 
         # Rescale images 0 - 1
@@ -374,7 +465,7 @@ class BeatGAN():
 
 
 def parse_command_line_args():
-    parser = argparse.ArgumentParser(description='AI Generated Art Bitch')
+    parser = argparse.ArgumentParser(description='AI Generated Beats Bitch')
     parser.add_argument('epochs', type=int,
                         help='number of epochs')
     parser.add_argument('training_dir', type=str,
