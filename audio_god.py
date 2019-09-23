@@ -31,7 +31,7 @@ from scipy.io import wavfile
 class AudioGod():
     def __init__(self, dataset, tempo, bars, shape):
 
-        self.transformations = 3
+        self.transformations = 10
 
         self.channels = 1
         self.bit_rate = 128 * 1000
@@ -63,8 +63,15 @@ class AudioGod():
             print('Checking %s files ...' % in_format)
 
             for filename in glob.glob("datasets/%s/*.%s" % (self.dataset, in_format)):
-                basefilename = os.path.basename(filename)
+                basefilename = os.path.basename(filename).replace('.%s' % in_format, '')
                 print(basefilename)
+                
+                # Checks to see if song has already been transformed
+                files = glob.glob("datasets/%s/%sbpm/*.%s" %
+                                  (self.dataset, self.tempo, out_format))
+                if ''.join(files).find(basefilename) != -1:
+                    print("\tFile already transformed")
+                    continue
 
                 song = AudioSegment.from_file(filename, format=in_format)
 
@@ -410,7 +417,7 @@ class AudioGod():
 
 
 if __name__ == "__main__":
-    ag = AudioGod('alex_sc', 120, 1, (100, 1, 160))
+    ag = AudioGod('yung_gan', 120, 1, (210, 1, 420))
     ag.slice_songs_by_bars()
     # ag.preprocess()
-    ag.load_slices()
+    # ag.load_slices()

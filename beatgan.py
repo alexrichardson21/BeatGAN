@@ -1,34 +1,31 @@
 from __future__ import division, print_function
 
-from keras_layer_normalization import LayerNormalization
-import numpy as np
-from scipy.io import wavfile
-import matplotlib.pyplot as plt
-import glob
-import math
-
-import keras.backend as K
-import tensorflow as tf
-
-from pydub import AudioSegment, silence
-
 import argparse
 import datetime
+import glob
+import math
 import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+import keras.backend as K
 import matplotlib.pyplot as plt
 import numpy as np
-import aubio
+import tensorflow as tf
 from keras.activations import relu
 from keras.initializers import RandomNormal
-from keras.layers import Activation, Dense, Dropout, Flatten, Input, Reshape, Bidirectional, TimeDistributed, BatchNormalization, Lambda
+from keras.layers import (Activation, BatchNormalization,
+                          CuDNNLSTM, Dense, Dropout, Flatten, Input, Lambda,
+                          Reshape, TimeDistributed)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import Conv2D, Conv2DTranspose, ZeroPadding2D
 from keras.layers.recurrent import LSTM
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
+from scipy.io import wavfile
+
 from audio_god import AudioGod
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 
 # Shape: (slices, channels, samples_per_slice)
 
@@ -41,17 +38,12 @@ class BeatGAN():
         self.bit_depth = 16
         self.sample_rate = 44100 #self.bit_rate // self.bit_depth
         
-        # self.samples_per_beat = int(60 / self.bpm * self.sample_rate)
-        # self.samples_per_bar = self.samples_per_beat * 4
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
         self.ngf = 16
         self.ndf = 16
         self.noise = 200
-        
-        self.k = (8, 2)
-        self.s = (2, 1)
 
         
         # shape = None
@@ -120,7 +112,6 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
                 ))
-        # cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
         cnn.add(BatchNormalization(momentum=.8))
         cnn.add(Activation("relu"))
 
@@ -144,7 +135,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
                 ))
-        cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
+        cnn.add(ZeroPadding2D(padding=((0, 0), (1, 2))))
         cnn.add(BatchNormalization(momentum=.8))
         cnn.add(Activation("relu"))
 
@@ -156,7 +147,6 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
                 ))
-        # cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
         cnn.add(BatchNormalization(momentum=.8))
         cnn.add(Activation("relu"))
 
@@ -192,6 +182,7 @@ class BeatGAN():
             
             return x
         cnn.add(Lambda(iFFT))
+        # cnn.add(Activation('tanh'))
         
         cnn.summary()
 
@@ -204,8 +195,8 @@ class BeatGAN():
         
         # Init Layer
         convlstm.add(
-            Dense(self.slices*self.ngf*64, input_shape=(self.noise,)))
-        convlstm.add(Reshape((self.slices, self.ngf*64)))
+            Dense(self.slices*self.ngf*128, input_shape=(self.noise,)))
+        convlstm.add(Reshape((self.slices, self.ngf*128)))
 
         # LSTM 1
         convlstm.add(
@@ -214,8 +205,6 @@ class BeatGAN():
                 return_sequences=True,
                 use_bias=False,
             ))
-        convlstm.add(LayerNormalization())
-        convlstm.add(Activation('relu'))
 
         # LSTM 2
         convlstm.add(
@@ -224,12 +213,9 @@ class BeatGAN():
                 return_sequences=True,
                 use_bias=False,
             ))
-        convlstm.add(LayerNormalization())
-        convlstm.add(Activation('relu'))
         
         # Time Distrubute Thru CNN
         convlstm.add(TimeDistributed(cnn))
-        convlstm.add(Activation('tanh'))
         
         convlstm.summary()
 
@@ -337,6 +323,8 @@ class BeatGAN():
 
         # Time Distribute Thru CNN
         convlstm.add(TimeDistributed(cnn, input_shape=self.shape))
+
+        # CuDNNLSTM()
         
         # LSTM 1
         convlstm.add(LSTM(
@@ -345,8 +333,6 @@ class BeatGAN():
             recurrent_dropout=0.1,
             use_bias=False,
         ))
-        convlstm.add(LayerNormalization())
-        convlstm.add(LeakyReLU(alpha=0.2))
 
         # LSTM 2
         convlstm.add(LSTM(
@@ -355,8 +341,6 @@ class BeatGAN():
             recurrent_dropout=0.1,
             use_bias=False,
         ))
-        convlstm.add(LayerNormalization())
-        convlstm.add(LeakyReLU(alpha=0.2))
         
         convlstm.add(Flatten())
         convlstm.add(Dropout(.1))
@@ -386,6 +370,9 @@ class BeatGAN():
         # -1 to 1
         db = max([X_train.max(), abs(X_train.min())])
         X_train = X_train / db
+
+        d_losses = []
+        g_losses = []
 
         start_time = datetime.datetime.now()
 
@@ -432,12 +419,21 @@ class BeatGAN():
             print("%d/%d [D loss: %f, acc.: %.2f%%] [G loss: %f] time: %s" %
                   (epoch, epochs, d_loss[0], 100*d_loss[1], g_loss, elapsed_time))
 
+            d_losses.append(d_loss[0])
+            g_losses.append(g_loss)
+
             # If at save interval => save generated image samples
             if epoch % save_interval == 0:
                 self.save_beats(epoch, training_dir)
 
         # Save generator
         self.generator.save('beat_gan_generator.h5')
+
+        # Plot Loss Graph
+        plt.plot(d_losses, g_losses)
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.savefig('loss_graph.png')
 
     def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
@@ -459,9 +455,12 @@ class BeatGAN():
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
-            wavfile.write(
-                'samples/%s_%dbpm/epoch%d/%d.wav' % 
-                (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
+            try:
+                wavfile.write(
+                    'samples/%s_%dbpm/epoch%d/%d.wav' % 
+                    (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
+            except:
+                print("Could not save beat :(")
 
 
 def parse_command_line_args():

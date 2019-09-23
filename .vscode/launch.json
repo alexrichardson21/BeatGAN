@@ -11,7 +11,15 @@
       "program": "${workspaceFolder}/beatgan.py",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "args": ["1000", "alex_sc", "120", "210", "420"]
+      "args": ["1000", "yung_gan", "120", "210", "420"]
+    },
+    {
+      "name": "AudioGod 120bpm",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/audio_god.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
     },
     {
       "name": "Python: Current File",
