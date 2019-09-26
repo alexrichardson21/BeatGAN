@@ -6,7 +6,6 @@ import glob
 import math
 import os
 
-import keras.backend as K
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -343,7 +342,7 @@ class BeatGAN():
         ))
         
         convlstm.add(Flatten())
-        convlstm.add(Dropout(.1))
+        convlstm.add(Dropout(.2))
         convlstm.add(Dense(1, activation="sigmoid"))
         
         convlstm.summary()
