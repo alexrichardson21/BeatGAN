@@ -1,0 +1,52 @@
+
+"yung gan" Project SRS Feedback
+===============================
+
+Damn, you guys.... this is very very good.
+
+There are a few things that need some re-work, and they all revolve around
+splitting requirements statements up.
+
+First, you did a great job with the CSCI breakdown section.  You specifically
+denote the parts.  The problem is, your requirements section is "monolithic"
+and doesn't give the reader any idea of details for how the requirements are
+related to the CSCI components.
+
+Second, be careful when crafting requirements so that you don't include too
+much in a single requirement.
+
+Here is an example of what I mean:
+YOURS:
+5.3   Functional Requirements by CSC
+<< your introduction paragraph to this section is great, BTW >>
+5.3.1 The generator application shall include a required input parameter for
+       number of songs to generate
+5.3.2 The generator application shall include a required input parameter for
+       the export file path location.
+5.3.3 The generator application shall include an option for sub-genre.
+5.3.4 The generator application shall include an option for genre.
+5.3.5 The generator application shall include an option for giving a filepath
+       to a saved generator in h5 format.
+
+RE-WORKED:
+5.3   Functional Requirements by CSC
+<< your introduction paragraph to this section is great, BTW >>
+5.3.1    Server CSC
+5.3.1.1  Generator CSU
+5.3.1.1.1   The Generator CSU shall include a required input parameter for
+            user entry of the number of songs to generate
+5.3.1.1.2   The Generator CSU shall include a required input parameter for
+            user entry of an export file path location.
+5.3.1.1.3   The Generator CSU shall include an option for selecting genre.
+5.3.1.1.4   The Generator CSU shall include an option for selecting sub-genre.
+5.3.1.1.5   The Generator CSU shall include an option for giving a filepath
+            to a saved generator.
+            The filepath will be specified in h5 format.
+
+Note that the "will" statement under 5.3.1.1.5 HAS NO NUMBER and is associated
+with the "shall" statement above it.  It explains the format used, which is
+more of a "how" not a "what".  SRS statements should focus on "what".
+
+Initial submission 7% out of 8%, plus 2% out of 2% for the Gantt chart.
+      9% out of 10% = 90% which is an A-minus
+
