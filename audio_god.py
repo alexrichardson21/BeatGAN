@@ -10,16 +10,16 @@ import time
 import urllib
 from os import path
 
-import ffmpy
+# import ffmpy
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
-import soundfile as sf
+# import soundfile as sf
 import sox
-from aubio import notes, onset, pitch, source, tempo
+# from aubio import notes, onset, pitch, source, tempo
 from pydub import AudioSegment, silence
 from pydub.playback import play
-from scipy.io import wavfile
+# from scipy.io import wavfile
 
 # Preprocessing Order:
 # 1. Soundcloud Playlist Download
