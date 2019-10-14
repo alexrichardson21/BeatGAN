@@ -14,6 +14,15 @@
       "args": ["1000", "yung_gan", "120", "210", "420"]
     },
     {
+      "name": "BeatGAN GPU 120bpm",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/beatgangpu.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": ["1000", "yung_gan", "120", "210", "420"]
+    },
+    {
       "name": "AudioGod 120bpm",
       "type": "python",
       "request": "launch",

@@ -359,7 +359,7 @@ class BeatGAN():
 
         return Model(four_bars, sameity)
 
-    def train(self, training_dir, epochs, batch_size=16, save_interval=10, preprocess=False):
+    def train(self, training_dir, epochs, batch_size=16, save_interval=50):
 
         # ---------------------
         #  Preprocessing
@@ -401,11 +401,13 @@ class BeatGAN():
 
             # Select a random half batch of images
             batch_files = np.random.choice(all_file_names, half_batch)
-            songs = []
+            songs = np.zeros((batch_size,) + self.shape)
+            num_songs = 0
             
             for filename in batch_files:
                 s3.meta.client.download_file('yung-gan-slices', filename, '/tmp/%s' % filename)
-                songs += [wavfile.read('/tmp/%s' % filename)]
+                songs += [wavfile.read('/tmp/%s' % filename)[1].reshape(self.shape)]
+                num_songs += 1
             
             # -1 to 1
             db = max([songs.max(), abs(songs.min())])
