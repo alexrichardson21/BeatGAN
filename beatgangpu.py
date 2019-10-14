@@ -490,7 +490,7 @@ class BeatGAN():
             except:
                 print("Could not save beat :(")
             try:
-                self.upload_file(filename, 'yung-gan-samples')
+                s3.upload_file(filename, 'yung-gan-samples', filename)
             except:
                 print("Could not upload sample to s3")
 
