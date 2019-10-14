@@ -25,7 +25,7 @@ from scipy.io import wavfile
 import boto3 as boto
 from botocore.exceptions import ClientError
 
-s3 = boto3.resource('s3')
+s3 = boto.resource('s3')
 
 # from audio_god import AudioGod
 
