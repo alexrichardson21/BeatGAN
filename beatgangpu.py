@@ -5,6 +5,8 @@ import datetime
 import glob
 import math
 import os
+import random
+import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,8 +22,10 @@ from keras.layers.recurrent import LSTM
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
 from scipy.io import wavfile
+import boto3 as boto
+from botocore.exceptions import ClientError
 
-from audio_god import AudioGod
+# from audio_god import AudioGod
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -360,15 +364,24 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        god = AudioGod(training_dir, self.bpm, 1, self.shape)
+        # god = AudioGod(training_dir, self.bpm, 1, self.shape)
 
-        if preprocess:
-            god.preprocess()
-        X_train = god.load_slices()
+        # if preprocess:
+        #     god.preprocess()
+        # X_train = god.load_slices()
+        
+
+        all_file_names = []
+
+        conn = boto.connect_s3()
+        bucket = conn.get_bucket('yung_gan_slices')
+        
+        for key in bucket.list():
+            all_file_names.append(key.name.encode('utf-8'))
 
         # -1 to 1
-        db = max([X_train.max(), abs(X_train.min())])
-        X_train = X_train / db
+        # db = max([X_train.max(), abs(X_train.min())])
+        # X_train = X_train / db
 
         d_losses = []
         g_losses = []
@@ -384,9 +397,19 @@ class BeatGAN():
             # ---------------------
 
             # Select a random half batch of images
-            idx = np.random.randint(0, X_train.shape[0], half_batch)
-            songs = X_train[idx]
-
+            batch_files = np.random.choice(all_file_names, half_batch)
+            songs = []
+            
+            s3 = boto.resource('s3')
+            
+            for filename in batch_files:
+                s3.meta.client.download_file('yung_gan_slices', filename, '/tmp/%s' % filename)
+                songs += [wavfile.read('/tmp/%s' % filename)]
+            
+            # -1 to 1
+            db = max([songs.max(), abs(songs.min())])
+            songs = songs / db
+            
             noise = np.random.normal(0, 1, (half_batch, self.noise))
 
             # Generate a half batch of new images
@@ -411,6 +434,16 @@ class BeatGAN():
 
             # Train the generator
             g_loss = self.combined.train_on_batch(noise, same_y)
+
+            # Delete temp files
+            folder = 'tmp'
+            for the_file in os.listdir(folder):
+                file_path = os.path.join(folder, the_file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    print(e)
 
             elapsed_time = datetime.datetime.now() - start_time
 
@@ -440,27 +473,45 @@ class BeatGAN():
         noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
         gen_beats = self.generator.predict(noise)
 
-        # Rescale images 0 - 1
-        gen_beats = (gen_beats - .5) * 2
+        # # Rescale images 0 - 1
+        # gen_beats = (gen_beats - .5) * 2
 
-        if not os.path.exists("samples/%s_%dbpm" %
-                              (dataset, self.bpm)):
-            os.mkdir("samples/%s_%dbpm" %
-                     (dataset, self.bpm))
-        if not os.path.exists("samples/%s_%dbpm/epoch%d" % 
-                            (dataset, self.bpm, epoch)):
-            os.mkdir("samples/%s_%dbpm/epoch%d" % 
-                    (dataset, self.bpm, epoch))
+        if not os.path.exists("samples"):
+            os.mkdir("samples")
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
+            filename = 'samples/%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write(
-                    'samples/%s_%dbpm/epoch%d/%d.wav' % 
-                    (dataset, self.bpm, epoch, i+1), self.sample_rate, beat)
+                wavfile.write(filename, self.sample_rate, beat)
             except:
                 print("Could not save beat :(")
+            try:
+                self.upload_file(filename, 'yung_gan_samples')
+            except:
+                print("Could not upload sample to s3")
 
+    def upload_file(self, file_name, bucket, object_name=None):
+        """Upload a file to an S3 bucket
+
+        :param file_name: File to upload
+        :param bucket: Bucket to upload to
+        :param object_name: S3 object name. If not specified then file_name is used
+        :return: True if file was uploaded, else False
+        """
+
+        # If S3 object_name was not specified, use file_name
+        if object_name is None:
+            object_name = file_name
+
+        # Upload the file
+        s3_client = boto.client('s3')
+        try:
+            response = s3_client.upload_file(file_name, bucket, object_name)
+        except ClientError as e:
+            logging.error(e)
+            return False
+        return True
 
 def parse_command_line_args():
     parser = argparse.ArgumentParser(description='AI Generated Beats Bitch')
