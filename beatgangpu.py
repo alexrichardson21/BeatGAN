@@ -484,13 +484,14 @@ class BeatGAN():
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
-            filename = 'samples/%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
+            filename = '%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write(filename, self.sample_rate, beat)
+                wavfile.write('samples/%s' % filename, self.sample_rate, beat)
             except:
                 print("Could not save beat :(")
             try:
-                s3.upload_file(filename, 'yung-gan-samples', filename)
+                s3.upload_file('samples/%s' %
+                               filename, 'yung-gan-samples', filename)
             except:
                 print("Could not upload sample to s3")
 
@@ -530,7 +531,7 @@ def parse_command_line_args():
     parser.add_argument('-b', '--batchsize',
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
-                        type=int, default=10, help='interval to save sample images')
+                        type=int, default=100, help='interval to save sample images')
     # parser.add_argument('-p', '--preprocess',
     #                     type=bool, default=False, help='preprocess songs')
     return vars(parser.parse_args())
