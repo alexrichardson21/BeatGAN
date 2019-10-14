@@ -373,7 +373,7 @@ class BeatGAN():
 
         all_file_names = []
 
-        conn = boto.connect_s3()
+        conn = boto.resource('s3')
         bucket = conn.get_bucket('yung_gan_slices')
         
         for key in bucket.list():
