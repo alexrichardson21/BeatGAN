@@ -401,7 +401,7 @@ class BeatGAN():
 
             # Select a random half batch of images
             batch_files = np.random.choice(all_file_names, half_batch)
-            songs = np.zeros((batch_size,) + self.shape)
+            songs = np.zeros((half_batch,) + self.shape)
             num_songs = 0
             
             for filename in batch_files:
