@@ -25,6 +25,8 @@ from scipy.io import wavfile
 import boto3 as boto
 from botocore.exceptions import ClientError
 
+s3 = boto3.resource('s3')
+
 # from audio_god import AudioGod
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -373,11 +375,12 @@ class BeatGAN():
 
         all_file_names = []
 
-        conn = boto.resource('s3')
-        bucket = conn.get_bucket('yung_gan_slices')
         
-        for key in bucket.list():
-            all_file_names.append(key.name.encode('utf-8'))
+        my_bucket = s3.Bucket('yung_gan_slices')
+        for my_bucket_object in my_bucket.objects.all():
+            all_file_names += [my_bucket_object.key]
+        # for key in bucket.list():
+        #     all_file_names.append(key.name.encode('utf-8'))
 
         # -1 to 1
         # db = max([X_train.max(), abs(X_train.min())])
@@ -399,8 +402,6 @@ class BeatGAN():
             # Select a random half batch of images
             batch_files = np.random.choice(all_file_names, half_batch)
             songs = []
-            
-            s3 = boto.resource('s3')
             
             for filename in batch_files:
                 s3.meta.client.download_file('yung_gan_slices', filename, '/tmp/%s' % filename)
@@ -505,9 +506,8 @@ class BeatGAN():
             object_name = file_name
 
         # Upload the file
-        s3_client = boto.client('s3')
         try:
-            response = s3_client.upload_file(file_name, bucket, object_name)
+            response = s3.upload_file(file_name, bucket, object_name)
         except ClientError as e:
             logging.error(e)
             return False
