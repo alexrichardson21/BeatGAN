@@ -531,8 +531,8 @@ def parse_command_line_args():
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
                         type=int, default=10, help='interval to save sample images')
-    parser.add_argument('-p', '--preprocess',
-                        type=bool, default=False, help='preprocess songs')
+    # parser.add_argument('-p', '--preprocess',
+    #                     type=bool, default=False, help='preprocess songs')
     return vars(parser.parse_args())
 
 if __name__ == '__main__':
@@ -543,5 +543,4 @@ if __name__ == '__main__':
     bg.train(training_dir=args['training_dir'],
              epochs=args['epochs'],
              batch_size=args['batchsize'],
-             save_interval=args['saveinterval'],
-             preprocess=args['preprocess'])
+             save_interval=args['saveinterval'])
