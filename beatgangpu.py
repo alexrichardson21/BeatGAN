@@ -376,7 +376,7 @@ class BeatGAN():
         all_file_names = []
 
         
-        my_bucket = s3.Bucket('yung_gan_slices')
+        my_bucket = s3.Bucket('yung-gan-slices')
         for my_bucket_object in my_bucket.objects.all():
             all_file_names += [my_bucket_object.key]
         # for key in bucket.list():
@@ -404,7 +404,7 @@ class BeatGAN():
             songs = []
             
             for filename in batch_files:
-                s3.meta.client.download_file('yung_gan_slices', filename, '/tmp/%s' % filename)
+                s3.meta.client.download_file('yung-gan-slices', filename, '/tmp/%s' % filename)
                 songs += [wavfile.read('/tmp/%s' % filename)]
             
             # -1 to 1
@@ -488,7 +488,7 @@ class BeatGAN():
             except:
                 print("Could not save beat :(")
             try:
-                self.upload_file(filename, 'yung_gan_samples')
+                self.upload_file(filename, 'yung-gan-samples')
             except:
                 print("Could not upload sample to s3")
 
