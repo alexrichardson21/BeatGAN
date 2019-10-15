@@ -396,7 +396,7 @@ class BeatGAN():
         all_file_names = []
 
         
-        my_bucket = s3.Bucket('yung-gan-slices')
+        my_bucket = s3.Bucket(training_dir)
         for my_bucket_object in my_bucket.objects.all():
             all_file_names += [my_bucket_object.key]
         # for key in bucket.list():
@@ -425,7 +425,7 @@ class BeatGAN():
             num_songs = 0
             
             for filename in batch_files:
-                s3.meta.client.download_file('yung-gan-slices', filename, '/tmp/%s' % filename)
+                s3.meta.client.download_file(training_dir, filename, '/tmp/%s' % filename)
                 songs[num_songs] = wavfile.read('/tmp/%s' % filename)[1].reshape(self.shape)
                 num_songs += 1
             
@@ -506,14 +506,21 @@ class BeatGAN():
             beat = np.reshape(beat, (-1, self.channels))
             filename = '%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write('samples/%s' % filename, self.sample_rate, beat)
-            except:
-                print("Could not save beat :(")
-            try:
-                s3.meta.client.upload_file('samples/%s' %
+                wavfile.write('tmp/%s' % filename, self.sample_rate, beat)      
+                s3.meta.client.upload_file('tmp/%s' %
                                filename, 'yung-gan-samples', filename)
+                
+                # Delete temp files
+                folder = 'tmp'
+                for the_file in os.listdir(folder):
+                    file_path = os.path.join(folder, the_file)
+                    try:
+                        if os.path.isfile(file_path):
+                            os.unlink(file_path)
+                    except Exception as e:
+                        print(e)
             except:
-                print("Could not upload sample to s3")
+                print("x")
 
     def upload_file(self, file_name, bucket, object_name=None):
         """Upload a file to an S3 bucket
@@ -551,7 +558,7 @@ def parse_command_line_args():
     parser.add_argument('-b', '--batchsize',
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
-                        type=int, default=100, help='interval to save sample images')
+                        type=int, default=500, help='interval to save sample images')
     # parser.add_argument('-p', '--preprocess',
     #                     type=bool, default=False, help='preprocess songs')
     return vars(parser.parse_args())
