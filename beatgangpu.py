@@ -48,7 +48,7 @@ class BeatGAN():
         
         self.ngf = 16
         self.ndf = 16
-        self.noise = 200
+        self.noise = 100
 
         
         # shape = None
@@ -204,32 +204,32 @@ class BeatGAN():
         convlstm.add(Reshape((self.slices, self.ngf*128)))
 
         # LSTM 1
-        convlstm.add(
-            CuDNNLSTM(
-                units=self.ngf*64,
-                return_sequences=True,
-                # use_bias=False,
-            ))
         # convlstm.add(
-        #     LSTM(
+        #     CuDNNLSTM(
         #         units=self.ngf*64,
         #         return_sequences=True,
         #         # use_bias=False,
         #     ))
-
-        # LSTM 2
         convlstm.add(
-            CuDNNLSTM(
-                units=self.ngf*32,
+            LSTM(
+                units=self.ngf*64,
                 return_sequences=True,
                 # use_bias=False,
             ))
+
+        # LSTM 2
         # convlstm.add(
-        #     LSTM(
+        #     CuDNNLSTM(
         #         units=self.ngf*32,
         #         return_sequences=True,
         #         # use_bias=False,
         #     ))
+        convlstm.add(
+            LSTM(
+                units=self.ngf*32,
+                return_sequences=True,
+                # use_bias=False,
+            ))
         
         # Time Distrubute Thru CNN
         convlstm.add(TimeDistributed(cnn))
@@ -344,28 +344,28 @@ class BeatGAN():
         # CuDNNLSTM()
         
         # LSTM 1
-        convlstm.add(CuDNNLSTM(
-            units=self.ndf*64,
-            return_sequences=True,
-            # recurrent_dropout=0.1,
-            # use_bias=False,
-        ))
-        # convlstm.add(LSTM(
+        # convlstm.add(CuDNNLSTM(
         #     units=self.ndf*64,
         #     return_sequences=True,
+        #     # recurrent_dropout=0.1,
+        #     # use_bias=False,
         # ))
+        convlstm.add(LSTM(
+            units=self.ndf*64,
+            return_sequences=True,
+        ))
 
         # LSTM 2
-        convlstm.add(CuDNNLSTM(
-            units=self.ndf*128,
-            return_sequences=True,
-            # recurrent_dropout=0.1,
-            # use_bias=False,
-        ))
-        # convlstm.add(LSTM(
+        # convlstm.add(CuDNNLSTM(
         #     units=self.ndf*128,
         #     return_sequences=True,
+        #     # recurrent_dropout=0.1,
+        #     # use_bias=False,
         # ))
+        convlstm.add(LSTM(
+            units=self.ndf*128,
+            return_sequences=True,
+        ))
         
         convlstm.add(Flatten())
         convlstm.add(Dropout(.2))
