@@ -558,7 +558,7 @@ def parse_command_line_args():
     parser.add_argument('-b', '--batchsize',
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
-                        type=int, default=500, help='interval to save sample images')
+                        type=int, default=1000, help='interval to save sample images')
     # parser.add_argument('-p', '--preprocess',
     #                     type=bool, default=False, help='preprocess songs')
     return vars(parser.parse_args())
