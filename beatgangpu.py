@@ -46,7 +46,7 @@ class BeatGAN():
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
-        self.ngf = 16
+        self.ngf = 32
         self.ndf = 16
         self.noise = 100
 
