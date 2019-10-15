@@ -175,7 +175,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
         ))
-        cnn.add(Activation("tanh"))
+        # cnn.add(Activation("tanh"))
         
         # Inverse Fast Fourier Transformation Layer
         # in (None, 1, 211, 2)  out (None, 1, 420)
@@ -187,7 +187,7 @@ class BeatGAN():
             
             return x
         cnn.add(Lambda(iFFT))
-        # cnn.add(Activation('tanh'))
+        cnn.add(Activation('tanh'))
         
         cnn.summary()
 
@@ -210,6 +210,12 @@ class BeatGAN():
                 return_sequences=True,
                 # use_bias=False,
             ))
+        # convlstm.add(
+        #     LSTM(
+        #         units=self.ngf*64,
+        #         return_sequences=True,
+        #         # use_bias=False,
+        #     ))
 
         # LSTM 2
         convlstm.add(
@@ -218,6 +224,12 @@ class BeatGAN():
                 return_sequences=True,
                 # use_bias=False,
             ))
+        # convlstm.add(
+        #     LSTM(
+        #         units=self.ngf*32,
+        #         return_sequences=True,
+        #         # use_bias=False,
+        #     ))
         
         # Time Distrubute Thru CNN
         convlstm.add(TimeDistributed(cnn))
@@ -338,6 +350,10 @@ class BeatGAN():
             # recurrent_dropout=0.1,
             # use_bias=False,
         ))
+        # convlstm.add(LSTM(
+        #     units=self.ndf*64,
+        #     return_sequences=True,
+        # ))
 
         # LSTM 2
         convlstm.add(CuDNNLSTM(
@@ -346,6 +362,10 @@ class BeatGAN():
             # recurrent_dropout=0.1,
             # use_bias=False,
         ))
+        # convlstm.add(LSTM(
+        #     units=self.ndf*128,
+        #     return_sequences=True,
+        # ))
         
         convlstm.add(Flatten())
         convlstm.add(Dropout(.2))
@@ -406,7 +426,7 @@ class BeatGAN():
             
             for filename in batch_files:
                 s3.meta.client.download_file('yung-gan-slices', filename, '/tmp/%s' % filename)
-                songs += [wavfile.read('/tmp/%s' % filename)[1].reshape(self.shape)]
+                songs[num_songs] = wavfile.read('/tmp/%s' % filename)[1].reshape(self.shape)
                 num_songs += 1
             
             # -1 to 1
