@@ -46,58 +46,66 @@ class BeatGAN():
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
-        self.ngf = 32
-        self.ndf = 16
+        self.ngf_cnn = 32
+        self.ndf_cnn = 32
+        self.ngf_lstm = 100
+        self.ndf_lstm = 100
         self.noise = 100
-
-        
-        # shape = None
-        # slice_combos = []
-        # for i in range(1, int(self.samples_per_bar**0.5)+1):
-        #     if self.samples_per_bar % i == 0:
-        #         slice_combos += [(i, self.samples_per_bar // i)]
-        # slice_combos += [(b, a) for a, b in slice_combos]
-
-        # while shape not in slice_combos:
-        #     [print(combo) for combo in slice_combos]
-        #     print('Pick same combo:')
-        #     ns = input('<num_slices>\n')
-        #     sps = input('<samples_per_slice>\n')
-        #     shape = (int(ns), int(sps))
 
         self.slices = rnn_size #int(ns)
         self.samples_per_slice = cnn_size #int(sps)
-        self.shape = (self.slices, self.channels, self.samples_per_slice)
+        self.lstm_shape = (self.slices, self.channels, self.samples_per_slice)
+        self.cnn_shape = (self.channels, self.samples_per_slice)
         
         optimizer = Adam(0.0002, 0.5)
         
-        # Build and compile the generator
-        self.generator = self.build_new_gen()
-        self.generator.compile(loss='binary_crossentropy', optimizer=optimizer)
+        # Build and compile the generators
+        self.cnn_generator = self.build_gen_cnn()
+        self.cnn_generator.compile(
+            loss='binary_crossentropy', optimizer=optimizer)
 
-        # Build and compile the discriminator
-        self.discriminator = self.build_new_dis()
-        self.discriminator.compile(loss='binary_crossentropy',
-                                   optimizer=optimizer,
-                                   metrics=['accuracy'])
+        self.lstm_generator = self.build_gen_lstm()
+        self.lstm_generator.compile(
+            loss='binary_crossentropy', optimizer=optimizer)
+
+        # Build and compile the discriminators
+        self.cnn_discriminator = self.build_dis_cnn()
+        self.cnn_discriminator.compile(loss='binary_crossentropy',
+                                       optimizer=optimizer,
+                                       metrics=['accuracy'])
+        
+        self.lstm_discriminator = self.build_dis_lstm()
+        self.lstm_discriminator.compile(loss='binary_crossentropy',
+                                        optimizer=optimizer,
+                                        metrics=['accuracy'])
 
 
         # The generator takes noise as input and generated imgs
-        z = Input((self.noise,))
-        song = self.generator(z)
+        z1 = Input((self.ngf_lstm,))
+        song1 = self.cnn_generator(z1)
+
+        z2 = Input((self.noise,))
+        song2 = self.lstm_generator(z2)
 
         # For the combined model we will only train the generator
-        self.discriminator.trainable = False
+        self.lstm_discriminator.trainable = False
+        self.cnn_discriminator.trainable = False
 
         # The same takes generated images as input and determines sameity
-        same = self.discriminator(song)
+        same1 = self.cnn_discriminator(song1)
+        same2 = self.lstm_discriminator(song2)
 
         # The combined model  (stacked generator and discriminator) takes
         # noise as input => generates images => determines sameity
-        self.combined = Model(z, same)
-        self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
+        self.cnn_combined = Model(z1, same1)
+        self.cnn_combined.compile(
+            loss='binary_crossentropy', optimizer=optimizer)
+
+        self.lstm_combined = Model(z2, same2)
+        self.lstm_combined.compile(
+            loss='binary_crossentropy', optimizer=optimizer)
     
-    def build_new_gen(self):
+    def build_gen_cnn(self):
                    
         # define CNN model
         ########################
@@ -105,13 +113,13 @@ class BeatGAN():
         cnn = Sequential()
         
         cnn.add(
-            Reshape((self.channels, 1, self.ngf*32), 
-            input_shape=(self.ngf*32,)
+            Reshape((self.channels, 1, self.ngf_lstm), 
+            input_shape=(self.ngf_lstm,)
         ))
 
         # Conv 1
         cnn.add(Conv2DTranspose(
-                filters=self.ngf*16,
+                filters=self.ngf_cnn*16,
                 kernel_size=(1, 6),
                 strides=(1, 2),
                 padding='same',
@@ -122,7 +130,7 @@ class BeatGAN():
 
         # Conv 2
         cnn.add(Conv2DTranspose(
-                filters=self.ngf*8,
+                filters=self.ngf_cnn*8,
                 kernel_size=(1, 6),
                 strides=(1, 2),
                 padding='same',
@@ -134,7 +142,7 @@ class BeatGAN():
 
         # Conv 3
         cnn.add(Conv2DTranspose(
-                filters=self.ngf*4,
+                filters=self.ngf_cnn*4,
                 kernel_size=(1, 6),
                 strides=(1, 2),
                 padding='same',
@@ -146,7 +154,7 @@ class BeatGAN():
 
         # Conv 4
         cnn.add(Conv2DTranspose(
-                filters=self.ngf*2,
+                filters=self.ngf_cnn*2,
                 kernel_size=(1, 12),
                 strides=(1, 4),
                 padding='same',
@@ -157,7 +165,7 @@ class BeatGAN():
 
         # Conv 5
         cnn.add(Conv2DTranspose(
-                filters=self.ngf,
+                filters=self.ngf_cnn,
                 kernel_size=(1, 12),
                 strides=(1, 4),
                 padding='same',
@@ -191,8 +199,12 @@ class BeatGAN():
         
         cnn.summary()
 
-        
-        
+        inp = Input(shape=(self.ngf_lstm,))
+        valid = cnn(inp)
+
+        return Model(inp, valid)
+      
+    def build_gen_lstm(self, CuDNN=True):
         # define ConvLSTM model
         #########################
         print("GENERATOR LSTM")
@@ -200,39 +212,43 @@ class BeatGAN():
         
         # Init Layer
         convlstm.add(
-            Dense(self.slices*self.ngf*128, input_shape=(self.noise,)))
-        convlstm.add(Reshape((self.slices, self.ngf*128)))
+            Dense(self.slices*self.ngf_lstm*3, input_shape=(self.noise,)))
+        convlstm.add(Reshape((self.slices, self.ngf_lstm*3)))
 
         # LSTM 1
-        convlstm.add(
-            CuDNNLSTM(
-                units=self.ngf*64,
-                return_sequences=True,
-                # use_bias=False,
-            ))
-        # convlstm.add(
-        #     LSTM(
-        #         units=self.ngf*64,
-        #         return_sequences=True,
-        #         # use_bias=False,
-        #     ))
+        if CuDNN:
+            convlstm.add(
+                CuDNNLSTM(
+                    units=self.ngf_lstm*2,
+                    return_sequences=True,
+                    # use_bias=False,
+                ))
+        else:
+            convlstm.add(
+                LSTM(
+                    units=self.ngf_lstm*2,
+                    return_sequences=True,
+                    # use_bias=False,
+                ))
 
         # LSTM 2
-        convlstm.add(
-            CuDNNLSTM(
-                units=self.ngf*32,
-                return_sequences=True,
-                # use_bias=False,
-            ))
-        # convlstm.add(
-        #     LSTM(
-        #         units=self.ngf*32,
-        #         return_sequences=True,
-        #         # use_bias=False,
-        #     ))
+        if CuDNN:
+            convlstm.add(
+                CuDNNLSTM(
+                    units=self.ngf_lstm,
+                    return_sequences=True,
+                    # use_bias=False,
+                ))
+        else:
+            convlstm.add(
+                LSTM(
+                    units=self.ngf_lstm,
+                    return_sequences=True,
+                    # use_bias=False,
+                ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(cnn))
+        convlstm.add(TimeDistributed(self.cnn_generator))
         
         convlstm.summary()
 
@@ -242,7 +258,7 @@ class BeatGAN():
 
         return Model(noise, song)
 
-    def build_new_dis(self):
+    def build_dis_cnn(self):
         
         # define CNN model
         ########################
@@ -262,7 +278,7 @@ class BeatGAN():
         
         # Conv 1
         cnn.add(Conv2D(
-            filters=self.ndf,
+            filters=self.ndf_cnn,
             kernel_size=(1, 8),
             strides=(1, 4),
             padding='same',
@@ -273,7 +289,7 @@ class BeatGAN():
 
         # Conv 2
         cnn.add(Conv2D(
-            filters=self.ndf*2,
+            filters=self.ndf_cnn*2,
             kernel_size=(1, 8),
             strides=(1, 4),
             padding='same',
@@ -284,7 +300,7 @@ class BeatGAN():
 
         # Conv 3
         cnn.add(Conv2D(
-            filters=self.ndf*4,
+            filters=self.ndf_cnn*4,
             kernel_size=(1, 4),
             strides=(1, 2),
             padding='same',
@@ -295,7 +311,7 @@ class BeatGAN():
 
         # Conv 4
         cnn.add(Conv2D(
-            filters=self.ndf*8,
+            filters=self.ndf_cnn*8,
             kernel_size=(1, 4),
             strides=(1, 2),
             padding='same',
@@ -306,7 +322,7 @@ class BeatGAN():
 
         # Conv 5
         cnn.add(Conv2D(
-            filters=self.ndf*16,
+            filters=self.ndf_cnn*16,
             kernel_size=(1, 4),
             strides=(1, 2),
             padding='same',
@@ -317,7 +333,7 @@ class BeatGAN():
 
         # Conv 6
         cnn.add(Conv2D(
-            filters=self.ndf*32,
+            filters=self.ndf_lstm,
             kernel_size=(1, 2),
             strides=(1, 2),
             padding='same',
@@ -331,7 +347,12 @@ class BeatGAN():
         
         cnn.summary()
 
-        
+        inp = Input(shape=(self.channels, self.samples_per_slice))
+        valid = cnn(inp)
+
+        return Model(inp, valid)
+
+    def build_dis_lstm(self, CuDNN=True):
         # define ConvLSTM model
         #########################
         print("DISCRIMINATOR LSTM")
@@ -339,33 +360,37 @@ class BeatGAN():
         convlstm = Sequential()
 
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(cnn, input_shape=self.shape))
+        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
 
         # CuDNNLSTM()
         
         # LSTM 1
-        convlstm.add(CuDNNLSTM(
-            units=self.ndf*64,
-            return_sequences=True,
-            # recurrent_dropout=0.1,
-            # use_bias=False,
-        ))
-        # convlstm.add(LSTM(
-        #     units=self.ndf*64,
-        #     return_sequences=True,
-        # ))
+        if CuDNN:
+            convlstm.add(CuDNNLSTM(
+                units=self.ndf_lstm*2,
+                return_sequences=True,
+                # recurrent_dropout=0.1,
+                # use_bias=False,
+            ))
+        else:
+            convlstm.add(LSTM(
+                units=self.ndf_lstm*2,
+                return_sequences=True,
+            ))
 
         # LSTM 2
-        convlstm.add(CuDNNLSTM(
-            units=self.ndf*128,
-            return_sequences=True,
-            # recurrent_dropout=0.1,
-            # use_bias=False,
-        ))
-        # convlstm.add(LSTM(
-        #     units=self.ndf*128,
-        #     return_sequences=True,
-        # ))
+        if CuDNN:
+            convlstm.add(CuDNNLSTM(
+                units=self.ndf_lstm*3,
+                return_sequences=True,
+                # recurrent_dropout=0.1,
+                # use_bias=False,
+            ))
+        else:
+            convlstm.add(LSTM(
+                units=self.ndf_lstm*3,
+                return_sequences=True,
+            ))
         
         convlstm.add(Flatten())
         convlstm.add(Dropout(.2))
@@ -374,37 +399,104 @@ class BeatGAN():
         convlstm.summary()
         
 
-        four_bars = Input(shape=self.shape)
+        four_bars = Input(shape=self.lstm_shape)
         sameity = convlstm(four_bars)
 
         return Model(four_bars, sameity)
 
-    def train(self, training_dir, epochs, batch_size=16, save_interval=50):
+    def cnn_train(self, training_dir, epochs, batch_size=16, save_interval=50):
 
         # ---------------------
         #  Preprocessing
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        # god = AudioGod(training_dir, self.bpm, 1, self.shape)
+        all_file_names = glob.glob('datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
 
-        # if preprocess:
-        #     god.preprocess()
-        # X_train = god.load_slices()
+        d_losses = []
+        g_losses = []
+
+        start_time = datetime.datetime.now()
+
+        half_batch = int(batch_size / 2)
         
+        for epoch in range(epochs):
 
-        all_file_names = []
+            # ---------------------
+            #  Train Discriminator
+            # ---------------------
 
-        
-        my_bucket = s3.Bucket(training_dir)
-        for my_bucket_object in my_bucket.objects.all():
-            all_file_names += [my_bucket_object.key]
-        # for key in bucket.list():
-        #     all_file_names.append(key.name.encode('utf-8'))
+            # Select a random half batch of images
+            batch_files = np.random.choice(all_file_names, half_batch)
+            # idxs = np.random.randint(0, self.cnn_size, half_batch)
+            songs = np.zeros((half_batch,) + self.cnn_shape)
+            num_songs = 0
+            
+            for filename in batch_files:
+                song = wavfile.read(filename)[1].reshape(self.lstm_shape)
+                songs[num_songs] = song[np.random.randint(0, self.slices)]
+                num_songs += 1
+            
+            # -1 to 1
+            db = max([songs.max(), abs(songs.min())])
+            songs = songs / db
+            
+            noise = np.random.normal(0, 1, (half_batch, self.ngf_lstm))
 
-        # -1 to 1
-        # db = max([X_train.max(), abs(X_train.min())])
-        # X_train = X_train / db
+            # Generate a half batch of new images
+            gen_songs = self.cnn_generator.predict(noise)
+
+            # Train the discriminator
+            d_loss_real = self.cnn_discriminator.train_on_batch(
+                songs, np.ones((half_batch, 1)))
+            d_loss_fake = self.cnn_discriminator.train_on_batch(
+                gen_songs, np.zeros((half_batch, 1)))
+            d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+
+            # ---------------------
+            #  Train Generator
+            # ---------------------
+
+            noise = np.random.normal(
+                0, 1, (batch_size, self.ngf_lstm))
+
+            # The generator wants the discriminator to label the generated samples as same (ones)
+            same_y = np.ones((batch_size, 1))
+
+            # Train the generator
+            g_loss = self.cnn_combined.train_on_batch(noise, same_y)
+
+            elapsed_time = datetime.datetime.now() - start_time
+
+            # Plot the progress
+            print("%d/%d [D loss: %f, acc.: %.2f%%] [G loss: %f] time: %s" %
+                  (epoch, epochs, d_loss[0], 100*d_loss[1], g_loss, elapsed_time))
+
+            d_losses.append(d_loss[0])
+            g_losses.append(g_loss)
+
+            # If at save interval => save generated image samples
+            if epoch % save_interval == 0:
+                self.save_beats(epoch, training_dir, 'cnn')
+
+        # Save generator
+        self.generator.save('beat_gan_cnn_generator.h5')
+
+        # Plot Loss Graph
+        plt.plot(d_losses, g_losses)
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.savefig('cnn_loss_graph.png')
+
+    def lstm_train(self, training_dir, epochs, batch_size=16, save_interval=50):
+
+        # ---------------------
+        #  Preprocessing
+        # ---------------------
+
+        # Load from training_dir and normalize dataset
+        all_file_names = glob.glob(
+            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
 
         d_losses = []
         g_losses = []
@@ -421,27 +513,27 @@ class BeatGAN():
 
             # Select a random half batch of images
             batch_files = np.random.choice(all_file_names, half_batch)
-            songs = np.zeros((half_batch,) + self.shape)
+            songs = np.zeros((half_batch,) + self.lstm_shape)
             num_songs = 0
-            
+
             for filename in batch_files:
-                s3.meta.client.download_file(training_dir, filename, '/tmp/%s' % filename)
-                songs[num_songs] = wavfile.read('/tmp/%s' % filename)[1].reshape(self.shape)
+                song = wavfile.read(filename)[1].reshape(self.lstm_shape)
+                songs[num_songs] = song
                 num_songs += 1
-            
+
             # -1 to 1
             db = max([songs.max(), abs(songs.min())])
             songs = songs / db
-            
+
             noise = np.random.normal(0, 1, (half_batch, self.noise))
 
             # Generate a half batch of new images
-            gen_songs = self.generator.predict(noise)
+            gen_songs = self.lstm_generator.predict(noise)
 
             # Train the discriminator
-            d_loss_real = self.discriminator.train_on_batch(
+            d_loss_real = self.lstm_discriminator.train_on_batch(
                 songs, np.ones((half_batch, 1)))
-            d_loss_fake = self.discriminator.train_on_batch(
+            d_loss_fake = self.lstm_discriminator.train_on_batch(
                 gen_songs, np.zeros((half_batch, 1)))
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
@@ -456,7 +548,7 @@ class BeatGAN():
             same_y = np.ones((batch_size, 1))
 
             # Train the generator
-            g_loss = self.combined.train_on_batch(noise, same_y)
+            g_loss = self.lstm_combined.train_on_batch(noise, same_y)
 
             # Delete temp files
             folder = 'tmp'
@@ -479,18 +571,18 @@ class BeatGAN():
 
             # If at save interval => save generated image samples
             if epoch % save_interval == 0:
-                self.save_beats(epoch, training_dir)
+                self.save_beats(epoch, training_dir, 'lstm')
 
         # Save generator
-        self.generator.save('beat_gan_generator.h5')
+        self.generator.save('beat_gan_cnn_generator.h5')
 
         # Plot Loss Graph
         plt.plot(d_losses, g_losses)
         plt.ylabel('Loss')
         plt.xlabel('Epoch')
-        plt.savefig('loss_graph.png')
+        plt.savefig('cnn_loss_graph.png')
 
-    def save_beats(self, epoch, dataset):
+    def save_beats(self, epoch, dataset, network):
         NUM_BEATS = 10
         
         noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
@@ -504,21 +596,9 @@ class BeatGAN():
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
-            filename = '%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
+            filename = '%s_%s_%dbpm_epoch%d_%d.wav' % (network, dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write('tmp/%s' % filename, self.sample_rate, beat)      
-                s3.meta.client.upload_file('tmp/%s' %
-                               filename, 'yung-gan-samples', filename)
-                
-                # Delete temp files
-                folder = 'tmp'
-                for the_file in os.listdir(folder):
-                    file_path = os.path.join(folder, the_file)
-                    try:
-                        if os.path.isfile(file_path):
-                            os.unlink(file_path)
-                    except Exception as e:
-                        print(e)
+                wavfile.write('samples/%s' % (filename, self.sample_rate, beat))
             except:
                 print("x")
 
@@ -545,7 +625,9 @@ class BeatGAN():
 
 def parse_command_line_args():
     parser = argparse.ArgumentParser(description='AI Generated Beats Bitch')
-    parser.add_argument('epochs', type=int,
+    parser.add_argument('cnn_epochs', type=int,
+                        help='number of epochs')
+    parser.add_argument('lstm_epochs', type=int,
                         help='number of epochs')
     parser.add_argument('training_dir', type=str,
                         help='filepath of training set (if wikiart url is given then filepath becomes the save dir)')
@@ -568,7 +650,11 @@ if __name__ == '__main__':
     bg = BeatGAN(args['tempo'],
                  args['rnn size'],
                  args['cnn size'])
-    bg.train(training_dir=args['training_dir'],
-             epochs=args['epochs'],
-             batch_size=args['batchsize'],
-             save_interval=args['saveinterval'])
+    bg.cnn_train(training_dir=args['training_dir'],
+                 epochs=args['cnn_epochs'],
+                 batch_size=args['batchsize'],
+                 save_interval=args['saveinterval'])
+    bg.lstm_train(training_dir=args['training_dir'],
+                  epochs=args['lstm_epochs'],
+                  batch_size=args['batchsize'],
+                  save_interval=args['saveinterval'])
