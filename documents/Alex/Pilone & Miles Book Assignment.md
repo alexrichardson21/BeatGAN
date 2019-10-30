@@ -53,3 +53,18 @@ Yes, with 20 day iterations, anything longer is much more likely to be an inaccu
 - Some people say I'm arrogant, but really I'm just about confidence: Estimate
 - Everyone's involved when it comes to me: Blueskying
 
+### Problem 7
+
+A "better than best case" estimate happens when asking an employee how long a project will take. They tend to assume they are working alone, they will make no mistakes, and that testing is someone else's job
+
+### Problem 8
+
+If your estimates don't match your customer's timeline, you should discuss it right away and decide necessary features for version 1.0. Your customer will not be happy but it is better to have this conversation earlier than later. You should add an iteration, explain that overflow work will happen later, and be transparent with the calculations behind your estimates
+
+### Problem 9
+
+Branching allows for code modifications to be made in parrallel. The master branch, or trunk, is the original branch. Branching helps especially in large projects because many roles need to be filled, including developers, build managers, and quality assurance.
+
+### Problem 10
+
+I have not used a build tool before. Build tools automate the mundane tasks of coding, such as downloading dependencies and packaging code into binary executables. Build tools are more valuable for larger developments are help with organizing large environments.
