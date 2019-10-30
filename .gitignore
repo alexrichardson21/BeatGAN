@@ -106,3 +106,4 @@ venv.bak/
 datasets
 samples
 auth.json
+*.h5

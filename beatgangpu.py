@@ -22,10 +22,10 @@ from keras.layers.recurrent import LSTM
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
 from scipy.io import wavfile
-import boto3 as boto
-from botocore.exceptions import ClientError
+# import boto3 as boto
+# from botocore.exceptions import ClientError
 
-s3 = boto.resource('s3')
+# s3 = boto.resource('s3')
 
 # from audio_god import AudioGod
 
@@ -84,16 +84,11 @@ class BeatGAN():
         z1 = Input((self.ngf_lstm,))
         song1 = self.cnn_generator(z1)
 
-        z2 = Input((self.noise,))
-        song2 = self.lstm_generator(z2)
-
         # For the combined model we will only train the generator
-        self.lstm_discriminator.trainable = False
         self.cnn_discriminator.trainable = False
 
         # The same takes generated images as input and determines sameity
         same1 = self.cnn_discriminator(song1)
-        same2 = self.lstm_discriminator(song2)
 
         # The combined model  (stacked generator and discriminator) takes
         # noise as input => generates images => determines sameity
@@ -101,6 +96,12 @@ class BeatGAN():
         self.cnn_combined.compile(
             loss='binary_crossentropy', optimizer=optimizer)
 
+        
+        z2 = Input((self.noise,))
+        song2 = self.lstm_generator(z2)
+        self.lstm_discriminator.trainable = False
+        same2 = self.lstm_discriminator(song2)
+        
         self.lstm_combined = Model(z2, same2)
         self.lstm_combined.compile(
             loss='binary_crossentropy', optimizer=optimizer)
@@ -248,7 +249,7 @@ class BeatGAN():
                 ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_generator))
+        convlstm.add(TimeDistributed(self.cnn_generator, trainable=False))
         
         convlstm.summary()
 
@@ -344,6 +345,8 @@ class BeatGAN():
         
         cnn.add(Flatten())
         cnn.add(Dropout(.2))
+
+        cnn.add(Dense(1, activation='sigmoid'))
         
         cnn.summary()
 
@@ -360,7 +363,7 @@ class BeatGAN():
         convlstm = Sequential()
 
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
+        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape, trainable=False))
 
         # CuDNNLSTM()
         
@@ -478,12 +481,13 @@ class BeatGAN():
             # If at save interval => save generated image samples
             if epoch % save_interval == 0:
                 self.save_beats(epoch, training_dir, 'cnn')
-
-        # Save generator
-        self.generator.save('beat_gan_cnn_generator.h5')
+                self.cnn_generator.save('beat_gan_cnn_generator.h5')
+                self.cnn_discriminator.save('beat_gan_cnn_discriminator.h5')
+                self.cnn_combined.save('beat_gan_cnn_combined.h5')
 
         # Plot Loss Graph
-        plt.plot(d_losses, g_losses)
+        plt.plot(range(epochs), d_losses)
+        plt.plot(range(epochs), g_losses)
         plt.ylabel('Loss')
         plt.xlabel('Epoch')
         plt.savefig('cnn_loss_graph.png')
@@ -550,21 +554,11 @@ class BeatGAN():
             # Train the generator
             g_loss = self.lstm_combined.train_on_batch(noise, same_y)
 
-            # Delete temp files
-            folder = 'tmp'
-            for the_file in os.listdir(folder):
-                file_path = os.path.join(folder, the_file)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                except Exception as e:
-                    print(e)
-
             elapsed_time = datetime.datetime.now() - start_time
 
             # Plot the progress
             print("%d/%d [D loss: %f, acc.: %.2f%%] [G loss: %f] time: %s" %
-                  (epoch, epochs, d_loss[0], 100*d_loss[1], g_loss, elapsed_time))
+                  (epoch+1, epochs, d_loss[0], 100*d_loss[1], g_loss, elapsed_time))
 
             d_losses.append(d_loss[0])
             g_losses.append(g_loss)
@@ -573,20 +567,28 @@ class BeatGAN():
             if epoch % save_interval == 0:
                 self.save_beats(epoch, training_dir, 'lstm')
 
-        # Save generator
-        self.generator.save('beat_gan_cnn_generator.h5')
+                # Save generator
+                self.lstm_generator.save('beat_gan_lstm_generator.h5')
+                self.lstm_discriminator.save('beat_gan_lstm_discriminator.h5')
+                self.lstm_combined.save('beat_gan_lstm_combined.h5')
 
         # Plot Loss Graph
-        plt.plot(d_losses, g_losses)
+        plt.plot(range(epochs), d_losses)
+        plt.plot(range(epochs), g_losses)
         plt.ylabel('Loss')
         plt.xlabel('Epoch')
-        plt.savefig('cnn_loss_graph.png')
+        plt.savefig('lstm_loss_graph.png')
 
     def save_beats(self, epoch, dataset, network):
         NUM_BEATS = 10
         
         noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
-        gen_beats = self.generator.predict(noise)
+        if network is 'cnn':
+            gen_beats = self.cnn_generator.predict(noise)
+        elif network is 'lstm':
+            gen_beats = self.lstm_generator.predict(noise)
+        else:
+            raise Exception()
 
         # # Rescale images 0 - 1
         # gen_beats = (gen_beats - .5) * 2
@@ -598,7 +600,7 @@ class BeatGAN():
             beat = np.reshape(beat, (-1, self.channels))
             filename = '%s_%s_%dbpm_epoch%d_%d.wav' % (network, dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write('samples/%s' % (filename, self.sample_rate, beat))
+                wavfile.write('samples/%s' % filename, self.sample_rate, beat)
             except:
                 print("x")
 
