@@ -46,10 +46,10 @@ class BeatGAN():
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
-        self.ngf_cnn = 32
+        self.ngf_cnn = 64
         self.ndf_cnn = 32
         self.ngf_lstm = 100
-        self.ndf_lstm = 100
+        self.ndf_lstm = 50
         self.noise = 100
 
         self.slices = rnn_size #int(ns)
@@ -249,7 +249,7 @@ class BeatGAN():
                 ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_generator, trainable=False))
+        convlstm.add(TimeDistributed(self.cnn_generator))
         
         convlstm.summary()
 
@@ -346,7 +346,7 @@ class BeatGAN():
         cnn.add(Flatten())
         cnn.add(Dropout(.2))
 
-        cnn.add(Dense(1, activation='sigmoid'))
+        cnn.add(Dense(self.ndf_lstm, activation='sigmoid'))
         
         cnn.summary()
 
@@ -363,7 +363,7 @@ class BeatGAN():
         convlstm = Sequential()
 
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape, trainable=False))
+        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
 
         # CuDNNLSTM()
         
@@ -414,7 +414,7 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        all_file_names = glob.glob('datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+        all_file_names = glob.glob('E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
 
         d_losses = []
         g_losses = []
@@ -451,9 +451,9 @@ class BeatGAN():
 
             # Train the discriminator
             d_loss_real = self.cnn_discriminator.train_on_batch(
-                songs, np.ones((half_batch, 1)))
+                songs, np.ones((half_batch, self.ngf_lstm)))
             d_loss_fake = self.cnn_discriminator.train_on_batch(
-                gen_songs, np.zeros((half_batch, 1)))
+                gen_songs, np.zeros((half_batch, self.ngf_lstm)))
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
             # ---------------------
@@ -464,7 +464,7 @@ class BeatGAN():
                 0, 1, (batch_size, self.ngf_lstm))
 
             # The generator wants the discriminator to label the generated samples as same (ones)
-            same_y = np.ones((batch_size, 1))
+            same_y = np.ones((batch_size, self.ngf_lstm))
 
             # Train the generator
             g_loss = self.cnn_combined.train_on_batch(noise, same_y)
@@ -500,7 +500,7 @@ class BeatGAN():
 
         # Load from training_dir and normalize dataset
         all_file_names = glob.glob(
-            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+            'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
 
         d_losses = []
         g_losses = []
@@ -527,7 +527,7 @@ class BeatGAN():
 
             # -1 to 1
             db = max([songs.max(), abs(songs.min())])
-            songs = songs / db
+            songs = songs / 32767.0
 
             noise = np.random.normal(0, 1, (half_batch, self.noise))
 
@@ -568,9 +568,9 @@ class BeatGAN():
                 self.save_beats(epoch, training_dir, 'lstm')
 
                 # Save generator
-                self.lstm_generator.save('beat_gan_lstm_generator.h5')
-                self.lstm_discriminator.save('beat_gan_lstm_discriminator.h5')
-                self.lstm_combined.save('beat_gan_lstm_combined.h5')
+                self.lstm_generator.save('E:/models/beat_gan_lstm_generator.h5')
+                self.lstm_discriminator.save('E:/models/beat_gan_lstm_discriminator.h5')
+                self.lstm_combined.save('E:/models/beat_gan_lstm_combined.h5')
 
         # Plot Loss Graph
         plt.plot(range(epochs), d_losses)
@@ -592,6 +592,7 @@ class BeatGAN():
 
         # # Rescale images 0 - 1
         # gen_beats = (gen_beats - .5) * 2
+        gen_beats = gen_beats.astype(np.float32)
 
         if not os.path.exists("samples"):
             os.mkdir("samples")
@@ -600,7 +601,7 @@ class BeatGAN():
             beat = np.reshape(beat, (-1, self.channels))
             filename = '%s_%s_%dbpm_epoch%d_%d.wav' % (network, dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write('samples/%s' % filename, self.sample_rate, beat)
+                wavfile.write('E:/samples/%s' % filename, self.sample_rate, beat)
             except:
                 print("x")
 
@@ -652,10 +653,10 @@ if __name__ == '__main__':
     bg = BeatGAN(args['tempo'],
                  args['rnn size'],
                  args['cnn size'])
-    bg.cnn_train(training_dir=args['training_dir'],
-                 epochs=args['cnn_epochs'],
-                 batch_size=args['batchsize'],
-                 save_interval=args['saveinterval'])
+    # bg.cnn_train(training_dir=args['training_dir'],
+    #              epochs=args['cnn_epochs'],
+    #              batch_size=args['batchsize'],
+    #              save_interval=args['saveinterval'])
     bg.lstm_train(training_dir=args['training_dir'],
                   epochs=args['lstm_epochs'],
                   batch_size=args['batchsize'],
