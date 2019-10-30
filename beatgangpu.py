@@ -222,14 +222,12 @@ class BeatGAN():
                 CuDNNLSTM(
                     units=self.ngf_lstm*2,
                     return_sequences=True,
-                    # use_bias=False,
                 ))
         else:
             convlstm.add(
                 LSTM(
                     units=self.ngf_lstm*2,
                     return_sequences=True,
-                    # use_bias=False,
                 ))
 
         # LSTM 2
@@ -238,18 +236,16 @@ class BeatGAN():
                 CuDNNLSTM(
                     units=self.ngf_lstm,
                     return_sequences=True,
-                    # use_bias=False,
                 ))
         else:
             convlstm.add(
                 LSTM(
                     units=self.ngf_lstm,
                     return_sequences=True,
-                    # use_bias=False,
                 ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_generator))
+        convlstm.add(TimeDistributed(self.cnn_generator, trainable=False))
         
         convlstm.summary()
 
@@ -334,7 +330,7 @@ class BeatGAN():
 
         # Conv 6
         cnn.add(Conv2D(
-            filters=self.ndf_lstm,
+            filters=self.ndf_cnn*32,
             kernel_size=(1, 2),
             strides=(1, 2),
             padding='same',
@@ -346,7 +342,7 @@ class BeatGAN():
         cnn.add(Flatten())
         cnn.add(Dropout(.2))
 
-        cnn.add(Dense(self.ndf_lstm, activation='sigmoid'))
+        cnn.add(Dense(1, activation='sigmoid'))
         
         cnn.summary()
 
@@ -359,13 +355,99 @@ class BeatGAN():
         # define ConvLSTM model
         #########################
         print("DISCRIMINATOR LSTM")
+
+        cnn = Sequential()
+
+        # Fast Fourier Transformation Layer
+        # in: (None, 1, 420)  out: (None, 1, 211, 2)
+        def FFT(x):
+            x = tf.spectral.rfft(x)
+            extended_bin = x[..., None]
+            return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
+        cnn.add(
+            Lambda(FFT, input_shape=(self.channels, self.samples_per_slice))
+        )
+
+        # Conv 1
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn,
+            kernel_size=(1, 8),
+            strides=(1, 4),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 2
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn*2,
+            kernel_size=(1, 8),
+            strides=(1, 4),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 3
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn*4,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 4
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn*8,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 5
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn*16,
+            kernel_size=(1, 4),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        # Conv 6
+        cnn.add(Conv2D(
+            filters=self.ndf_cnn*32,
+            kernel_size=(1, 2),
+            strides=(1, 2),
+            padding='same',
+            use_bias='False',
+        ))
+        cnn.add(BatchNormalization(momentum=0.8))
+        cnn.add(LeakyReLU(alpha=0.2))
+
+        cnn.add(Flatten())
+        cnn.add(Dropout(.2))
+
+        cnn.add(Dense(self.ndf_lstm, activation='sigmoid'))
+
+        cnn.summary()
+
+        inp = Input(shape=(self.channels, self.samples_per_slice))
+        valid = cnn(inp)
         
         convlstm = Sequential()
 
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
-
-        # CuDNNLSTM()
+        convlstm.add(TimeDistributed(cnn, input_shape=self.lstm_shape))
         
         # LSTM 1
         if CuDNN:
@@ -605,27 +687,6 @@ class BeatGAN():
             except:
                 print("x")
 
-    def upload_file(self, file_name, bucket, object_name=None):
-        """Upload a file to an S3 bucket
-
-        :param file_name: File to upload
-        :param bucket: Bucket to upload to
-        :param object_name: S3 object name. If not specified then file_name is used
-        :return: True if file was uploaded, else False
-        """
-
-        # If S3 object_name was not specified, use file_name
-        if object_name is None:
-            object_name = file_name
-
-        # Upload the file
-        try:
-            response = s3.upload_file(file_name, bucket, object_name)
-        except ClientError as e:
-            logging.error(e)
-            return False
-        return True
-
 def parse_command_line_args():
     parser = argparse.ArgumentParser(description='AI Generated Beats Bitch')
     parser.add_argument('cnn_epochs', type=int,
@@ -633,30 +694,28 @@ def parse_command_line_args():
     parser.add_argument('lstm_epochs', type=int,
                         help='number of epochs')
     parser.add_argument('training_dir', type=str,
-                        help='filepath of training set (if wikiart url is given then filepath becomes the save dir)')
-    parser.add_argument('tempo', type=int,
+                        help='filepath of training set')
+    parser.add_argument('-t', '--tempo', type=int, default=120,
                         help='Tempo of song output')
-    parser.add_argument('rnn size', type=int,
+    parser.add_argument('-r', '--rnnsize', type=int, default=210,
                         help='size of recurrent layer')
-    parser.add_argument('cnn size', type=int,
+    parser.add_argument('-c', '--cnnsize', type=int, default=420,
                         help='size of convolutional layer')
     parser.add_argument('-b', '--batchsize',
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
                         type=int, default=1000, help='interval to save sample images')
-    # parser.add_argument('-p', '--preprocess',
-    #                     type=bool, default=False, help='preprocess songs')
     return vars(parser.parse_args())
 
 if __name__ == '__main__':
     args = parse_command_line_args()
     bg = BeatGAN(args['tempo'],
-                 args['rnn size'],
-                 args['cnn size'])
-    # bg.cnn_train(training_dir=args['training_dir'],
-    #              epochs=args['cnn_epochs'],
-    #              batch_size=args['batchsize'],
-    #              save_interval=args['saveinterval'])
+                 args['rnnsize'],
+                 args['cnnsize'])
+    bg.cnn_train(training_dir=args['training_dir'],
+                 epochs=args['cnn_epochs'],
+                 batch_size=args['batchsize'],
+                 save_interval=args['saveinterval'])
     bg.lstm_train(training_dir=args['training_dir'],
                   epochs=args['lstm_epochs'],
                   batch_size=args['batchsize'],
