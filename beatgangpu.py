@@ -22,12 +22,6 @@ from keras.layers.recurrent import LSTM
 from keras.models import Model, Sequential
 from keras.optimizers import Adam
 from scipy.io import wavfile
-# import boto3 as boto
-# from botocore.exceptions import ClientError
-
-# s3 = boto.resource('s3')
-
-# from audio_god import AudioGod
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -46,10 +40,10 @@ class BeatGAN():
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
         
-        self.ngf_cnn = 64
-        self.ndf_cnn = 32
+        self.ngf_cnn = 128
+        self.ndf_cnn = 64
         self.ngf_lstm = 100
-        self.ndf_lstm = 50
+        self.ndf_lstm = 60
         self.noise = 100
 
         self.slices = rnn_size #int(ns)
@@ -60,19 +54,19 @@ class BeatGAN():
         optimizer = Adam(0.0002, 0.5)
         
         # Build and compile the generators
-        self.cnn_generator = self.build_gen_cnn()
-        self.cnn_generator.compile(
-            loss='binary_crossentropy', optimizer=optimizer)
+        # self.cnn_generator = self.build_gen_cnn()
+        # self.cnn_generator.compile(
+        #     loss='binary_crossentropy', optimizer=optimizer)
 
         self.lstm_generator = self.build_gen_lstm()
         self.lstm_generator.compile(
             loss='binary_crossentropy', optimizer=optimizer)
 
         # Build and compile the discriminators
-        self.cnn_discriminator = self.build_dis_cnn()
-        self.cnn_discriminator.compile(loss='binary_crossentropy',
-                                       optimizer=optimizer,
-                                       metrics=['accuracy'])
+        # self.cnn_discriminator = self.build_dis_cnn()
+        # self.cnn_discriminator.compile(loss='binary_crossentropy',
+        #                                optimizer=optimizer,
+        #                                metrics=['accuracy'])
         
         self.lstm_discriminator = self.build_dis_lstm()
         self.lstm_discriminator.compile(loss='binary_crossentropy',
@@ -81,20 +75,20 @@ class BeatGAN():
 
 
         # The generator takes noise as input and generated imgs
-        z1 = Input((self.ngf_lstm,))
-        song1 = self.cnn_generator(z1)
+        # z1 = Input((self.ngf_lstm,))
+        # song1 = self.cnn_generator(z1)
 
         # For the combined model we will only train the generator
-        self.cnn_discriminator.trainable = False
+        # self.cnn_discriminator.trainable = False
 
         # The same takes generated images as input and determines sameity
-        same1 = self.cnn_discriminator(song1)
+        # same1 = self.cnn_discriminator(song1)
 
         # The combined model  (stacked generator and discriminator) takes
         # noise as input => generates images => determines sameity
-        self.cnn_combined = Model(z1, same1)
-        self.cnn_combined.compile(
-            loss='binary_crossentropy', optimizer=optimizer)
+        # self.cnn_combined = Model(z1, same1)
+        # self.cnn_combined.compile(
+        #     loss='binary_crossentropy', optimizer=optimizer)
 
         
         z2 = Input((self.noise,))
@@ -213,10 +207,25 @@ class BeatGAN():
         
         # Init Layer
         convlstm.add(
-            Dense(self.slices*self.ngf_lstm*3, input_shape=(self.noise,)))
-        convlstm.add(Reshape((self.slices, self.ngf_lstm*3)))
+            Dense(self.slices*self.ngf_lstm*8, input_shape=(self.noise,)))
+        convlstm.add(Activation('tanh'))
+        convlstm.add(Reshape((self.slices, self.ngf_lstm*8)))
 
         # LSTM 1
+        if CuDNN:
+            convlstm.add(
+                CuDNNLSTM(
+                    units=self.ngf_lstm*4,
+                    return_sequences=True,
+                ))
+        else:
+            convlstm.add(
+                LSTM(
+                    units=self.ngf_lstm*4,
+                    return_sequences=True,
+                ))
+
+        # LSTM 2
         if CuDNN:
             convlstm.add(
                 CuDNNLSTM(
@@ -245,7 +254,7 @@ class BeatGAN():
                 ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_generator, trainable=False))
+        convlstm.add(TimeDistributed(self.cnn_generator))
         
         convlstm.summary()
 
@@ -342,7 +351,7 @@ class BeatGAN():
         cnn.add(Flatten())
         cnn.add(Dropout(.2))
 
-        cnn.add(Dense(1, activation='sigmoid'))
+        cnn.add(Dense(self.ndf_lstm, activation='tanh'))
         
         cnn.summary()
 
@@ -355,99 +364,11 @@ class BeatGAN():
         # define ConvLSTM model
         #########################
         print("DISCRIMINATOR LSTM")
-
-        cnn = Sequential()
-
-        # Fast Fourier Transformation Layer
-        # in: (None, 1, 420)  out: (None, 1, 211, 2)
-        def FFT(x):
-            x = tf.spectral.rfft(x)
-            extended_bin = x[..., None]
-            return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
-        cnn.add(
-            Lambda(FFT, input_shape=(self.channels, self.samples_per_slice))
-        )
-
-        # Conv 1
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn,
-            kernel_size=(1, 8),
-            strides=(1, 4),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 2
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*2,
-            kernel_size=(1, 8),
-            strides=(1, 4),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 3
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*4,
-            kernel_size=(1, 4),
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 4
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*8,
-            kernel_size=(1, 4),
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 5
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*16,
-            kernel_size=(1, 4),
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 6
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*32,
-            kernel_size=(1, 2),
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        cnn.add(Flatten())
-        cnn.add(Dropout(.2))
-
-        cnn.add(Dense(self.ndf_lstm, activation='sigmoid'))
-
-        cnn.summary()
-
-        inp = Input(shape=(self.channels, self.samples_per_slice))
-        valid = cnn(inp)
         
         convlstm = Sequential()
 
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(cnn, input_shape=self.lstm_shape))
+        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
         
         # LSTM 1
         if CuDNN:
@@ -462,21 +383,37 @@ class BeatGAN():
                 units=self.ndf_lstm*2,
                 return_sequences=True,
             ))
+        convlstm.add(Dropout(.1))
 
         # LSTM 2
         if CuDNN:
             convlstm.add(CuDNNLSTM(
-                units=self.ndf_lstm*3,
+                units=self.ndf_lstm*4,
                 return_sequences=True,
                 # recurrent_dropout=0.1,
                 # use_bias=False,
             ))
         else:
             convlstm.add(LSTM(
-                units=self.ndf_lstm*3,
+                units=self.ndf_lstm*4,
                 return_sequences=True,
             ))
-        
+        convlstm.add(Dropout(.1))
+
+        # LSTM 3
+        if CuDNN:
+            convlstm.add(CuDNNLSTM(
+                units=self.ndf_lstm*8,
+                return_sequences=True,
+                # recurrent_dropout=0.1,
+                # use_bias=False,
+            ))
+        else:
+            convlstm.add(LSTM(
+                units=self.ndf_lstm*8,
+                return_sequences=True,
+            ))
+
         convlstm.add(Flatten())
         convlstm.add(Dropout(.2))
         convlstm.add(Dense(1, activation="sigmoid"))
@@ -712,10 +649,10 @@ if __name__ == '__main__':
     bg = BeatGAN(args['tempo'],
                  args['rnnsize'],
                  args['cnnsize'])
-    bg.cnn_train(training_dir=args['training_dir'],
-                 epochs=args['cnn_epochs'],
-                 batch_size=args['batchsize'],
-                 save_interval=args['saveinterval'])
+    # bg.cnn_train(training_dir=args['training_dir'],
+    #              epochs=args['cnn_epochs'],
+    #              batch_size=args['batchsize'],
+    #              save_interval=args['saveinterval'])
     bg.lstm_train(training_dir=args['training_dir'],
                   epochs=args['lstm_epochs'],
                   batch_size=args['batchsize'],
