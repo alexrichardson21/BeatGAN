@@ -27,11 +27,12 @@ song = AudioSegment.from_file("datasets/alex_sc/120bpm/slices/ai security_1_slic
 data = np.reshape(
     np.array(song.get_array_of_samples()), (210, 1, 420))
 db = max([data.max(), abs(data.min())])
-data = data / db
+# data = data / db
 for s in data:
     f = FFT(s)
+    x = f.numpy()
     # x = tf.print(f, output_stream=sys.stderr, summarize=-1)
     fi = iFFT(f)
-    y = tf.print(fi, output_stream=sys.stderr, summarize=-1)
-    print(fi)
+    y = fi.numpy()
+    # print(fi)
     # print(f)
