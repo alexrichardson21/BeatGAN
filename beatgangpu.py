@@ -74,7 +74,7 @@ class BeatGAN():
         z = Input((self.noise,))
         song = self.gen(z)
         
-        self.lstm_discriminator.trainable = False
+        self.dis.trainable = False
         
         same = self.dis(song)
         
@@ -89,7 +89,7 @@ class BeatGAN():
 
         song = Input(shape=self.lstm_shape)
         z = Input(shape=(self.noise,))
-        gen_song = self.gen()
+        gen_song = self.gen(z)
         valid_gen = self.dis(gen_song)
         valid_real = self.dis(song)
 
@@ -316,11 +316,13 @@ class BeatGAN():
 
         return Model(inp, valid)
       
-    def build_gen(self, CuDNN=True):
+    def build_gen(self, CuDNN=False):
         # define ConvLSTM model
         #########################
         print("GENERATOR LSTM")
         convlstm = Sequential()
+
+        cnn = self.build_gen_cnn()
         
         # Init Layer
         convlstm.add(
@@ -371,7 +373,7 @@ class BeatGAN():
                 ))
         
         # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_generator))
+        convlstm.add(TimeDistributed(cnn))
         
         convlstm.summary()
 
@@ -381,15 +383,17 @@ class BeatGAN():
 
         return Model(noise, song)
 
-    def build_dis(self, CuDNN=True):
+    def build_dis(self, CuDNN=False):
         # define ConvLSTM model
         #########################
         print("DISCRIMINATOR LSTM")
         
         convlstm = Sequential()
 
+        cnn = self.build_dis_cnn()
+
         # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(self.cnn_discriminator, input_shape=self.lstm_shape))
+        convlstm.add(TimeDistributed(cnn, input_shape=self.lstm_shape))
         
         # LSTM 1
         if CuDNN:
@@ -577,6 +581,6 @@ if __name__ == '__main__':
                  args['rnnsize'],
                  args['cnnsize'])
     bg.lstm_train(training_dir=args['training_dir'],
-                  epochs=args['lstm_epochs'],
+                  epochs=args['epochs'],
                   batch_size=args['batchsize'],
                   save_interval=args['saveinterval'])
