@@ -32,40 +32,34 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 # Shape: (slices, channels, samples_per_slice)
 
 class BeatGAN():
-    def __init__(self, tempo, rnn_size, cnn_size):
-        self.bpm = tempo
+    def __init__(self):
+        self.bpm = 120
         
         self.channels = 1
+        self.bars = 1
         self.bit_rate = 128 * 1000
         self.bit_depth = 16
-        self.sample_rate = 44100 #self.bit_rate // self.bit_depth
-        
+        self.sample_rate = 44100
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
-
         
-        self.ngf_cnn = 128
-        self.ndf_cnn = 64
-        self.ngf_lstm = 100
-        self.ndf_lstm = 100
+        self.ngf = 32
+        self.ndf = 32
         self.noise = 100
 
-        self.slices = rnn_size #int(ns)
-        self.samples_per_slice = cnn_size #int(sps)
-        self.lstm_shape = (self.slices, self.channels, self.samples_per_slice)
-        self.cnn_shape = (self.channels, self.samples_per_slice)
+        self.wave_shape = (self.samples_per_bar, self.bars, self.channels)
         
         optimizer = Adam(0.0002, 0.5)
         
         # Build and compile the generator
         self.gen = self.build_gen()
-        self.gen.compile(
-            loss='binary_crossentropy', optimizer=optimizer)
+        # self.gen.compile(
+        #     loss='binary_crossentropy', optimizer=optimizer)
 
         # Build and compile the discriminators        
         self.dis = self.build_dis()
-        self.dis.compile(loss='binary_crossentropy',
-                                        optimizer=optimizer,
-                                        metrics=['accuracy'])
+        # self.dis.compile(loss='binary_crossentropy',
+        #                                 optimizer=optimizer,
+        #                                 metrics=['accuracy'])
 
         optimizer = Adam(0.0001, beta_1=0.5, beta_2=0.9)
 
@@ -117,341 +111,216 @@ class BeatGAN():
         # Functions need names or Keras will throw an error
         partial_gp_loss.__name__ = 'gradient_penalty'
     
-    def build_gen_cnn(self):
-
-        k = (1, 35)
-                   
-        # define CNN model
-        ########################
-        print("GENERATOR CNN")
-        cnn = Sequential()
+    def build_gen(self):
         
-        cnn.add(
-            Reshape((self.channels, 1, self.ngf_lstm), 
-            input_shape=(self.ngf_lstm,)
-        ))
+        k = (30, 1)
+        s = (4, 1)
+
+        model = Sequential()
+
+        # Input
+        model.add(Dense(20*self.ngf*64, input_shape=(self.noise,)))
+        model.add(Reshape((20, 1, self.ngf*64)))
 
         # Conv 1
-        cnn.add(Conv2DTranspose(
-                filters=self.ngf_cnn*16,
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf*32,
                 kernel_size=k,
-                strides=(1, 2),
+                strides=s,
                 padding='same',
                 use_bias=False,
-                ))
-        cnn.add(BatchNormalization(momentum=.8))
-        cnn.add(Activation("relu"))
+            ))
+        model.add(ZeroPadding2D(((2, 4), (0, 0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
 
         # Conv 2
-        cnn.add(Conv2DTranspose(
-                filters=self.ngf_cnn*8,
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf*16,
                 kernel_size=k,
-                strides=(1, 2),
+                strides=s,
                 padding='same',
                 use_bias=False,
-                ))
-        cnn.add(ZeroPadding2D(padding=((0, 0), (1, 0))))
-        cnn.add(BatchNormalization(momentum=.8))
-        cnn.add(Activation("relu"))
+            ))
+        # model.add(ZeroPadding2D(((1,0),(0,0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
 
         # Conv 3
-        cnn.add(Conv2DTranspose(
-                filters=self.ngf_cnn*4,
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf*8,
                 kernel_size=k,
-                strides=(1, 2),
+                strides=s,
                 padding='same',
                 use_bias=False,
-                ))
-        cnn.add(ZeroPadding2D(padding=((0, 0), (1, 2))))
-        cnn.add(BatchNormalization(momentum=.8))
-        cnn.add(Activation("relu"))
+            ))
+        model.add(ZeroPadding2D(((1, 1), (0, 0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
 
         # Conv 4
-        cnn.add(Conv2DTranspose(
-                filters=self.ngf_cnn*2,
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf*4,
                 kernel_size=k,
-                strides=(1, 4),
+                strides=s,
                 padding='same',
                 use_bias=False,
-                ))
-        cnn.add(BatchNormalization(momentum=.8))
-        cnn.add(Activation("relu"))
+            ))
+        # model.add(ZeroPadding2D(((1, 1), (0, 0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
 
         # Conv 5
-        cnn.add(Conv2DTranspose(
-                filters=self.ngf_cnn,
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf*2,
                 kernel_size=k,
-                strides=(1, 4),
+                strides=s,
                 padding='same',
                 use_bias=False,
-                ))
-        cnn.add(ZeroPadding2D(padding=((0, 0), (2, 1))))
-        cnn.add(BatchNormalization(momentum=.8))
-        cnn.add(Activation("relu"))
+            ))
+        # model.add(ZeroPadding2D(((1, 1), (0, 0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
 
-        # Final Conv
-        cnn.add(Conv2DTranspose(
-                filters=2,
+        # Conv 6
+        model.add(
+            Conv2DTranspose(
+                filters=self.ndf,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+            ))
+        model.add(ZeroPadding2D(((4, 4), (0, 0))))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Activation('relu'))
+
+        # Output
+        model.add(
+            Conv2DTranspose(
+                filters=self.channels,
                 kernel_size=k,
                 strides=1,
                 padding='same',
                 use_bias=False,
-        ))
-        # cnn.add(Activation("tanh"))
-        
-        # Inverse Fast Fourier Transformation Layer
-        # in (None, 1, 211, 2)  out (None, 1, 420)
-        def iFFT(x):
-            real, imag = tf.split(x, 2, axis=-1)
-            x = tf.complex(real, imag) 
-            x = tf.squeeze(x, axis=[-1])
-            x = tf.spectral.irfft(x)
-            
+            ))
+        model.add(Activation('tanh'))
+
+        model.summary()
+
+        # x = Input(shape=(self.noise,))
+        # y = model(x)
+
+        # return Model(x,y)  
+        return model     
+    
+    def build_dis(self):
+
+        k=(30,1)
+        s=(4,1)
+
+        model = Sequential()
+
+        def PhaseShuffle(x, rad=2, pad_type='reflect'):
+            x = tf.squeeze(x, axis=[-2])
+            b, x_len, nch = x.get_shape().as_list()
+
+            phase = tf.random_uniform([], minval=-rad, maxval=rad + 1, dtype=tf.int32)
+            pad_l = tf.maximum(phase, 0)
+            pad_r = tf.maximum(-phase, 0)
+            phase_start = pad_r
+            x = tf.pad(x, [[0, 0], [pad_l, pad_r], [0, 0]], mode=pad_type)
+
+            x = x[:, phase_start:phase_start+x_len]
+            x.set_shape([b, x_len, nch])
+            x = tf.expand_dims(x, axis=[-2])
+
             return x
-        cnn.add(Lambda(iFFT))
-        cnn.add(Activation('tanh'))
-        
-        cnn.summary()
 
-        inp = Input(shape=(self.ngf_lstm,))
-        valid = cnn(inp)
-
-        return Model(inp, valid)
-
-    def build_dis_cnn(self):
-        
-        # define CNN model
-        ########################
-        print("DISCRIMINATOR CNN")
-
-        k = (1, 30)
-        
-        cnn = Sequential()
-
-        # Fast Fourier Transformation Layer
-        # in: (None, 1, 420)  out: (None, 1, 211, 2)
-        def FFT(x):
-            x = tf.spectral.rfft(x)
-            extended_bin = x[..., None]
-            return tf.concat([tf.real(extended_bin), tf.imag(extended_bin)], axis=-1)
-        cnn.add(
-            Lambda(FFT, input_shape=(self.channels, self.samples_per_slice))
-        )
-        
         # Conv 1
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn,
-            kernel_size=k,
-            strides=(1, 4),
-            padding='same',
-            use_bias='False',
+        model.add(
+            Conv2D(
+                filters=self.ndf,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+                input_shape=self.wave_shape
         ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(PhaseShuffle))
 
         # Conv 2
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*2,
-            kernel_size=k,
-            strides=(1, 4),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-
-        # Conv 3
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*4,
-            kernel_size=k,
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
+        model.add(
+            Conv2D(
+                filters=self.ndf*2,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+            ))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(PhaseShuffle))
 
         # Conv 4
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*8,
-            kernel_size=k,
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
+        model.add(
+            Conv2D(
+                filters=self.ndf*4,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+            ))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(PhaseShuffle))
 
         # Conv 5
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*16,
-            kernel_size=k,
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
+        model.add(
+            Conv2D(
+                filters=self.ndf*8,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+            ))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(PhaseShuffle))
 
         # Conv 6
-        cnn.add(Conv2D(
-            filters=self.ndf_cnn*32,
-            kernel_size=k,
-            strides=(1, 2),
-            padding='same',
-            use_bias='False',
-        ))
-        cnn.add(BatchNormalization(momentum=0.8))
-        cnn.add(LeakyReLU(alpha=0.2))
-        
-        cnn.add(Flatten())
-        cnn.add(Dropout(.2))
-
-        cnn.add(Dense(self.ndf_lstm, activation='tanh'))
-        
-        cnn.summary()
-
-        inp = Input(shape=(self.channels, self.samples_per_slice))
-        valid = cnn(inp)
-
-        return Model(inp, valid)
-      
-    def build_gen(self, CuDNN=False):
-        # define ConvLSTM model
-        #########################
-        print("GENERATOR LSTM")
-        convlstm = Sequential()
-
-        cnn = self.build_gen_cnn()
-        
-        # Init Layer
-        convlstm.add(
-            Dense(self.slices*self.ngf_lstm*4, input_shape=(self.noise,)))
-        convlstm.add(Activation('tanh'))
-        convlstm.add(Reshape((self.slices, self.ngf_lstm*4)))
-
-        # LSTM 1
-        if CuDNN:
-            convlstm.add(
-                CuDNNLSTM(
-                    units=self.ngf_lstm*3,
-                    return_sequences=True,
-                ))
-        else:
-            convlstm.add(
-                LSTM(
-                    units=self.ngf_lstm*3,
-                    return_sequences=True,
-                ))
-
-        # LSTM 2
-        if CuDNN:
-            convlstm.add(
-                CuDNNLSTM(
-                    units=self.ngf_lstm*2,
-                    return_sequences=True,
-                ))
-        else:
-            convlstm.add(
-                LSTM(
-                    units=self.ngf_lstm*2,
-                    return_sequences=True,
-                ))
-
-        # LSTM 2
-        if CuDNN:
-            convlstm.add(
-                CuDNNLSTM(
-                    units=self.ngf_lstm,
-                    return_sequences=True,
-                ))
-        else:
-            convlstm.add(
-                LSTM(
-                    units=self.ngf_lstm,
-                    return_sequences=True,
-                ))
-        
-        # Time Distrubute Thru CNN
-        convlstm.add(TimeDistributed(cnn))
-        
-        convlstm.summary()
-
-        
-        noise = Input(shape=(self.noise,))
-        song = convlstm(noise)
-
-        return Model(noise, song)
-
-    def build_dis(self, CuDNN=False):
-        # define ConvLSTM model
-        #########################
-        print("DISCRIMINATOR LSTM")
-        
-        convlstm = Sequential()
-
-        cnn = self.build_dis_cnn()
-
-        # Time Distribute Thru CNN
-        convlstm.add(TimeDistributed(cnn, input_shape=self.lstm_shape))
-        
-        # LSTM 1
-        if CuDNN:
-            convlstm.add(CuDNNLSTM(
-                units=self.ndf_lstm*2,
-                return_sequences=True,
-                # recurrent_dropout=0.1,
-                # use_bias=False,
+        model.add(
+            Conv2D(
+                filters=self.ndf*16,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
             ))
-        else:
-            convlstm.add(LSTM(
-                units=self.ndf_lstm*2,
-                return_sequences=True,
-            ))
-        convlstm.add(Dropout(.1))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(PhaseShuffle))
 
-        # LSTM 2
-        if CuDNN:
-            convlstm.add(CuDNNLSTM(
-                units=self.ndf_lstm*3,
-                return_sequences=True,
-                # recurrent_dropout=0.1,
-                # use_bias=False,
-            ))
-        else:
-            convlstm.add(LSTM(
-                units=self.ndf_lstm*3,
-                return_sequences=True,
-            ))
-        convlstm.add(Dropout(.1))
+        # Output
+        model.add(Flatten())
+        model.add(Dense(1))
 
-        # LSTM 3
-        if CuDNN:
-            convlstm.add(CuDNNLSTM(
-                units=self.ndf_lstm*4,
-                return_sequences=True,
-                # recurrent_dropout=0.1,
-                # use_bias=False,
-            ))
-        else:
-            convlstm.add(LSTM(
-                units=self.ndf_lstm*4,
-                return_sequences=True,
-            ))
+        model.summary()
 
-        convlstm.add(Flatten())
-        convlstm.add(Dropout(.2))
-        convlstm.add(Dense(1, activation="sigmoid"))
-        
-        convlstm.summary()
-        
+        # x = Input(shape=self.wave_shape)
+        # y = model(x)
 
-        four_bars = Input(shape=self.lstm_shape)
-        sameity = convlstm(four_bars)
+        # return Model(x, y)
+        return model
 
-        return Model(four_bars, sameity)
-
-    def lstm_train(self, training_dir, epochs, training_ratio=5, batch_size=16, save_interval=50):
+    def train(self, training_dir, epochs, training_ratio=5, batch_size=16, save_interval=50):
 
         # ---------------------
         #  Preprocessing
@@ -459,8 +328,9 @@ class BeatGAN():
 
         # Load from training_dir and normalize dataset
         all_file_names = glob.glob(
-            'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
-
+            'datasets/%s/%dbpm/*.wav' % (training_dir, self.bpm))
+        # all_file_names = glob.glob(
+        #     'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         d_losses = []
         g_losses = []
 
@@ -475,11 +345,11 @@ class BeatGAN():
             # ---------------------
             for _ in range(training_ratio):
                 batch_files = np.random.choice(all_file_names, half_batch)
-                songs = np.zeros((half_batch,) + self.lstm_shape)
+                songs = np.zeros((half_batch,) + self.wave_shape)
                 num_songs = 0
 
                 for filename in batch_files:
-                    song = wavfile.read(filename)[1].reshape(self.lstm_shape)
+                    song = wavfile.read(filename)[1].reshape(self.wave_shape)
                     songs[num_songs] = song
                     num_songs += 1
 
@@ -563,12 +433,6 @@ def parse_command_line_args():
                         help='number of epochs')
     parser.add_argument('training_dir', type=str,
                         help='filepath of training set')
-    parser.add_argument('-t', '--tempo', type=int, default=120,
-                        help='Tempo of song output')
-    parser.add_argument('-r', '--rnnsize', type=int, default=210,
-                        help='size of recurrent layer')
-    parser.add_argument('-c', '--cnnsize', type=int, default=420,
-                        help='size of convolutional layer')
     parser.add_argument('-b', '--batchsize',
                         default=16, type=int, help='size of batches per epoch')
     parser.add_argument('-s', '--saveinterval',
@@ -577,10 +441,8 @@ def parse_command_line_args():
 
 if __name__ == '__main__':
     args = parse_command_line_args()
-    bg = BeatGAN(args['tempo'],
-                 args['rnnsize'],
-                 args['cnnsize'])
-    bg.lstm_train(training_dir=args['training_dir'],
+    bg = BeatGAN()
+    bg.train(training_dir=args['training_dir'],
                   epochs=args['epochs'],
                   batch_size=args['batchsize'],
                   save_interval=args['saveinterval'])
