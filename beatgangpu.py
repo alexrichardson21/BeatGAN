@@ -352,10 +352,10 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        all_file_names = glob.glob(
-            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         # all_file_names = glob.glob(
-        #     'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+            # 'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+        all_file_names = glob.glob(
+            'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         d_losses = []
         g_losses = []
 

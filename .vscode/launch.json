@@ -20,7 +20,7 @@
       "program": "${workspaceFolder}/beatgangpu.py",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "args": ["100", "alex_sc"]
+      "args": ["100", "yung_gan"]
     },
     {
       "name": "AudioGod 120bpm",
