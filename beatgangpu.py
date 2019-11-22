@@ -34,28 +34,28 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 class BeatGAN():
     def __init__(self):
         self.bpm = 120
-        
+
         self.channels = 1
         self.bars = 1
         self.bit_rate = 128 * 1000
         self.bit_depth = 16
         self.sample_rate = 44100
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
-        
+
         self.ngf = 32
         self.ndf = 32
         self.noise = 100
 
         self.wave_shape = (self.samples_per_bar, self.bars, self.channels)
-        
+
         optimizer = Adam(0.0002, 0.5)
-        
+
         # Build and compile the generator
         self.gen = self.build_gen()
         # self.gen.compile(
         #     loss='binary_crossentropy', optimizer=optimizer)
 
-        # Build and compile the discriminators        
+        # Build and compile the discriminators
         self.dis = self.build_dis()
         # self.dis.compile(loss='binary_crossentropy',
         #                                 optimizer=optimizer,
@@ -67,15 +67,15 @@ class BeatGAN():
         # Compile Generator Model
         z = Input((self.noise,))
         song = self.gen(z)
-        
+
         self.dis.trainable = False
-        
+
         same = self.dis(song)
-        
+
         self.gen_model = Model(inputs=[z],
-                                outputs=[same])
+                               outputs=[same])
         self.gen_model.compile(optimizer=optimizer,
-                                loss=wasserstein_loss)
+                               loss=wasserstein_loss)
 
         # Compile Discriminator Model
         self.dis.trainable = True
@@ -98,21 +98,21 @@ class BeatGAN():
         # If we don't concatenate the real and generated samples, however, we get three
         # outputs: One of the generated samples, one of the real samples, and one of the
         # averaged samples, all of size BATCH_SIZE. This works neatly!
-        self.critic_model = Model(inputs=[song,z],
-                                    outputs=[valid_real, valid_gen,
-                                            valid_ave])
+        self.critic_model = Model(inputs=[song, z],
+                                  outputs=[valid_real, valid_gen,
+                                           valid_ave])
         # We use the Adam paramaters from Gulrajani et al. We use the Wasserstein loss for both
         # the real and generated samples, and the gradient penalty loss for the averaged samples
         self.critic_model.compile(optimizer=optimizer,
-                                    loss=[wasserstein_loss,
+                                  loss=[wasserstein_loss,
                                         wasserstein_loss,
                                         partial_gp_loss])
 
         # Functions need names or Keras will throw an error
         partial_gp_loss.__name__ = 'gradient_penalty'
-    
+
     def build_gen(self):
-        
+
         k = (30, 1)
         s = (4, 1)
 
@@ -216,9 +216,9 @@ class BeatGAN():
         # x = Input(shape=(self.noise,))
         # y = model(x)
 
-        # return Model(x,y)  
-        return model     
-    
+        # return Model(x,y)
+        return model
+
     def build_dis(self):
 
         k = (30, 1)
@@ -230,7 +230,8 @@ class BeatGAN():
             # x = tf.keras.backend.squeeze(x, axis=-2)
             b, x_len, nch = x._keras_shape
 
-            phase = tf.random_uniform([], minval=-rad, maxval=rad + 1, dtype=tf.int32)
+            phase = tf.random_uniform(
+                [], minval=-rad, maxval=rad + 1, dtype=tf.int32)
             pad_l = tf.maximum(phase, 0)
             pad_r = tf.maximum(-phase, 0)
             phase_start = pad_r
@@ -251,7 +252,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
                 input_shape=self.wave_shape
-        ))
+            ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
@@ -352,10 +353,10 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        # all_file_names = glob.glob(
-            # 'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         all_file_names = glob.glob(
-            'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+        # all_file_names = glob.glob(
+        #     'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         d_losses = []
         g_losses = []
 
@@ -368,28 +369,28 @@ class BeatGAN():
             # ---------------------
             #  Train Discriminator
             # ---------------------
+            batch_d_losses = []
             for _ in range(training_ratio):
-                batch_files = np.random.choice(all_file_names, half_batch)
                 songs = np.zeros((half_batch,) + self.wave_shape)
                 num_songs = 0
-
-                for filename in batch_files:
+                while num_songs < half_batch:
+                    filename = np.random.choice(all_file_names)
                     song = wavfile.read(filename)[1].reshape(self.wave_shape)
-                    songs[num_songs] = song
-                    num_songs += 1
+                    if song.all() != np.zeros(self.wave_shape).all():
+                        songs[num_songs] = song
+                        num_songs += 1
 
                 # -1 to 1
-                db = max([songs.max(), abs(songs.min())])
-                songs = songs / 32767.0
-                
+                songs = songs / 32768.0
+
                 noise = np.random.normal(0, 1, (half_batch, self.noise))
-                
+
                 positive_y = np.ones((half_batch, 1))
                 negative_y = -positive_y
                 dummy_y = np.zeros((half_batch, 1))
-                
-                d_loss = self.critic_model.train_on_batch([songs, noise],
-                                                            [positive_y, negative_y, dummy_y])
+
+                batch_d_losses += [self.critic_model.train_on_batch([songs, noise],
+                                                              [positive_y, negative_y, dummy_y])]
 
             # ---------------------
             #  Train Generator
@@ -398,16 +399,18 @@ class BeatGAN():
                 0, 1, (batch_size, self.noise))
 
             positive_y = np.ones((batch_size, 1))
-            
+
             g_loss = self.gen_model.train_on_batch(noise, positive_y)
 
             elapsed_time = datetime.datetime.now() - start_time
 
-            # Plot the progress
-            print("%d/%d [D loss: %f, acc.: %.2f%%] [G loss: %f] time: %s" %
-                  (epoch+1, epochs, d_loss[0], 100*d_loss[1], g_loss, elapsed_time))
+            ave_d_loss = np.average([l[0] for l in batch_d_losses])
 
-            d_losses.append(d_loss[0])
+            # Plot the progress
+            print("%d/%d [D loss: %f] [G loss: %f] time: %s" %
+                  (epoch+1, epochs, ave_d_loss, g_loss, elapsed_time))
+
+            d_losses.append(ave_d_loss)
             g_losses.append(g_loss)
 
             # If at save interval => save generated image samples
@@ -416,7 +419,8 @@ class BeatGAN():
 
                 # Save generator
                 self.gen_model.save('E:/models/beat_gan_lstm_generator.h5')
-                self.critic_model.save('E:/models/beat_gan_lstm_discriminator.h5')
+                self.critic_model.save(
+                    'E:/models/beat_gan_lstm_discriminator.h5')
 
         # Plot Loss Graph
         plt.plot(range(epochs), d_losses)
@@ -427,7 +431,7 @@ class BeatGAN():
 
     def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
-        
+
         noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
         gen_beats = self.gen.predict(noise)
 
@@ -440,11 +444,14 @@ class BeatGAN():
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
-            filename = '%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
+            filename = '%s_%dbpm_epoch%d_%d.wav' % (
+                dataset, self.bpm, epoch, i+1)
             try:
-                wavfile.write('E:/samples/%s' % filename, self.sample_rate, beat)
+                wavfile.write('E:/samples/%s' %
+                              filename, self.sample_rate, beat)
             except:
                 print("x")
+
 
 def parse_command_line_args():
     parser = argparse.ArgumentParser(description='AI Generated Beats Bitch')
@@ -458,10 +465,11 @@ def parse_command_line_args():
                         type=int, default=1000, help='interval to save sample images')
     return vars(parser.parse_args())
 
+
 if __name__ == '__main__':
     args = parse_command_line_args()
     bg = BeatGAN()
     bg.train(training_dir=args['training_dir'],
-                  epochs=args['epochs'],
-                  batch_size=args['batchsize'],
-                  save_interval=args['saveinterval'])
+             epochs=args['epochs'],
+             batch_size=args['batchsize'],
+             save_interval=args['saveinterval'])
