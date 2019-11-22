@@ -253,7 +253,7 @@ class BeatGAN():
                 use_bias=False,
                 input_shape=self.wave_shape
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -268,7 +268,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -283,7 +283,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -298,7 +298,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -313,7 +313,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -328,7 +328,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
-        model.add(BatchNormalization(momentum=0.8))
+        # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
         model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
@@ -353,10 +353,10 @@ class BeatGAN():
         # ---------------------
 
         # Load from training_dir and normalize dataset
-        all_file_names = glob.glob(
-            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         # all_file_names = glob.glob(
-        #     'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+        #     'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
+        all_file_names = glob.glob(
+            'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         d_losses = []
         g_losses = []
 
@@ -376,7 +376,7 @@ class BeatGAN():
                 while num_songs < half_batch:
                     filename = np.random.choice(all_file_names)
                     song = wavfile.read(filename)[1].reshape(self.wave_shape)
-                    if song.all() != np.zeros(self.wave_shape).all():
+                    if not np.array_equal(song, np.zeros(self.wave_shape)):
                         songs[num_songs] = song
                         num_songs += 1
 
