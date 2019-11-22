@@ -81,7 +81,7 @@ class BeatGAN():
         self.dis.trainable = True
         self.gen.trainable = False
 
-        song = Input(shape=self.lstm_shape)
+        song = Input(shape=self.wave_shape)
         z = Input(shape=(self.noise,))
         gen_song = self.gen(z)
         valid_gen = self.dis(gen_song)
@@ -221,14 +221,14 @@ class BeatGAN():
     
     def build_dis(self):
 
-        k=(30,1)
-        s=(4,1)
+        k = (30, 1)
+        s = (4, 1)
 
         model = Sequential()
 
         def PhaseShuffle(x, rad=2, pad_type='reflect'):
-            x = tf.squeeze(x, axis=[-2])
-            b, x_len, nch = x.get_shape().as_list()
+            # x = tf.keras.backend.squeeze(x, axis=-2)
+            b, x_len, nch = x._keras_shape
 
             phase = tf.random_uniform([], minval=-rad, maxval=rad + 1, dtype=tf.int32)
             pad_l = tf.maximum(phase, 0)
@@ -238,7 +238,7 @@ class BeatGAN():
 
             x = x[:, phase_start:phase_start+x_len]
             x.set_shape([b, x_len, nch])
-            x = tf.expand_dims(x, axis=[-2])
+            # x = tf.keras.backend.expand_dims(x, axis=-2)
 
             return x
 
@@ -254,7 +254,9 @@ class BeatGAN():
         ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
 
         # Conv 2
         model.add(
@@ -267,7 +269,9 @@ class BeatGAN():
             ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
 
         # Conv 4
         model.add(
@@ -280,7 +284,9 @@ class BeatGAN():
             ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
 
         # Conv 5
         model.add(
@@ -293,7 +299,9 @@ class BeatGAN():
             ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
 
         # Conv 6
         model.add(
@@ -306,7 +314,24 @@ class BeatGAN():
             ))
         model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
         model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
+
+        # Conv 7
+        model.add(
+            Conv2D(
+                filters=self.ndf*32,
+                kernel_size=k,
+                strides=s,
+                padding='same',
+                use_bias=False,
+            ))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(LeakyReLU(0.2))
+        model.add(Lambda(lambda x: tf.squeeze(x, axis=[-2])))
+        model.add(Lambda(PhaseShuffle))
+        model.add(Lambda(lambda x: tf.expand_dims(x, axis=[-2])))
 
         # Output
         model.add(Flatten())
@@ -328,7 +353,7 @@ class BeatGAN():
 
         # Load from training_dir and normalize dataset
         all_file_names = glob.glob(
-            'datasets/%s/%dbpm/*.wav' % (training_dir, self.bpm))
+            'datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         # all_file_names = glob.glob(
         #     'E:/datasets/%s/%dbpm/slices/*.wav' % (training_dir, self.bpm))
         d_losses = []
@@ -387,30 +412,24 @@ class BeatGAN():
 
             # If at save interval => save generated image samples
             if epoch % save_interval == 0:
-                self.save_beats(epoch, training_dir, 'lstm')
+                self.save_beats(epoch, training_dir)
 
                 # Save generator
-                self.gen.save('E:/models/beat_gan_lstm_generator.h5')
-                self.dis.save('E:/models/beat_gan_lstm_discriminator.h5')
-                self.lstm_combined.save('E:/models/beat_gan_lstm_combined.h5')
+                self.gen_model.save('E:/models/beat_gan_lstm_generator.h5')
+                self.critic_model.save('E:/models/beat_gan_lstm_discriminator.h5')
 
         # Plot Loss Graph
         plt.plot(range(epochs), d_losses)
         plt.plot(range(epochs), g_losses)
         plt.ylabel('Loss')
         plt.xlabel('Epoch')
-        plt.savefig('lstm_loss_graph.png')
+        plt.savefig('loss_graph.png')
 
-    def save_beats(self, epoch, dataset, network):
+    def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
         
         noise = np.random.normal(0, 1, (NUM_BEATS, self.noise))
-        if network is 'cnn':
-            gen_beats = self.cnn_generator.predict(noise)
-        elif network is 'lstm':
-            gen_beats = self.gen.predict(noise)
-        else:
-            raise Exception()
+        gen_beats = self.gen.predict(noise)
 
         # # Rescale images 0 - 1
         # gen_beats = (gen_beats - .5) * 2
@@ -421,7 +440,7 @@ class BeatGAN():
 
         for i, beat in enumerate(gen_beats):
             beat = np.reshape(beat, (-1, self.channels))
-            filename = '%s_%s_%dbpm_epoch%d_%d.wav' % (network, dataset, self.bpm, epoch, i+1)
+            filename = '%s_%dbpm_epoch%d_%d.wav' % (dataset, self.bpm, epoch, i+1)
             try:
                 wavfile.write('E:/samples/%s' % filename, self.sample_rate, beat)
             except:
