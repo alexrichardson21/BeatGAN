@@ -1,10 +1,20 @@
 ## Yung Gan
 ### Authors: Alex Richardson & Joshua Patterson
-A Generative Adversarial Network that trains models to generate AI constructed music instrumentals. Consists 
-of a library of 10,000 soundcloud/youtube instruments, which are used to train the network. Created
-using tensorflow and keras, a deep learning python library. Front-End is created using React. (add node_module files in your directory to run)
+#### Our current UI is tentative until we are able to train new models within our python backend. We are currently working with only 3 Parameters:
+`BPM`
+`Genre`
+`Sub-Genre`
 
-![yungganposter](yungganposter2.png)
+#### These serve as basic inputs for a musical intrumentalal. We plan to add more parameters such as:
+`Key`
+`Temp`
+`Album Art`
+
+#### The Album Art parameter is a future plan, where a Generative Adversarial network would be able to generate album cover art based on the sounds it creates through yung gan.
+
+`We hosted the python program on a GPU Powered EC2 Virtual Machine. By having Amazon APIGW point to http endpoints on our EC2, our React code can send fetch calls to the EC2 our program is stored in. We also need nginx within the EC2, that converts URLs into executable code on the EC2 server.`
+
+![TentativeUI](TentativeUI.png)
 
 ## Available Scripts
 
