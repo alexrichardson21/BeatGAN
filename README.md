@@ -1,5 +1,6 @@
 # yung gan
 ### Alex Richardson and Josh Patterson
+#### CMSI 401: Software Engineering Lab
 
 #### Project Description
 ` Our software provides a command line application to both generate
