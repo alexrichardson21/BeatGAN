@@ -23,4 +23,6 @@ By having our command-line software run on through AWS GPU Server, an EC2 Virtua
 Machine Instance could be created to allow the python program to reach our front-end. Pointing
 Amazon API Gateway to a http endpoint on EC2 would allow this to happen.`
 
+#### Project Poster
+
 ![yungganposter2](yungganposter2.png)
