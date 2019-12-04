@@ -1,4 +1,4 @@
-# BeatGAN
+# yung gan
 ### Alex Richardson and Josh Patterson
 
 #### Project Description
