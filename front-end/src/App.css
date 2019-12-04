@@ -23,26 +23,30 @@
 
 .TextBPM {
   position: absolute;
-    top: 525px;
-    left: 180px;
+    top: 450px;
+    left: 340px;
+    display: flex;
 }
 
 .TextGenre {
   position: absolute;
-    top: 525px;
-    left: 490px;
+    top: 450px;
+    left: 680px;
+    display: flex;
 }
 
 .TextSubGenre {
   position: absolute;
-    top: 525px;
-    left: 820px;
+    top: 450px;
+    left: 985px;
+    display: flex;
 }
 
 .GenerateButton {
   position: absolute;
-    top: 620px;
-    left: 505px;
+    top: 540px;
+    left: 675px;
     width: 100%;
-    display: block;
+    display: flex;
+    
 }
