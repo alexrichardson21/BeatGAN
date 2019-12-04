@@ -1,4 +1,4 @@
 # BeatGAN
 ### Alex Richardson and Josh Patterson
 
-![yungganposter3](yungganposter3.png)
+![yungganposter3](yungganposter3.pdf)
