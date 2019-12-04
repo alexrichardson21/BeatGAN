@@ -1,6 +1,4 @@
 import React from 'react';
-import AppBar from '@material-ui/core/AppBar';
-import Button from '@material-ui/core/Button';
 import Card from '@material-ui/core/Card';
 import CardActions from '@material-ui/core/CardActions';
 import CardContent from '@material-ui/core/CardContent';
@@ -8,13 +6,9 @@ import CardHeader from '@material-ui/core/CardHeader';
 import CssBaseline from '@material-ui/core/CssBaseline';
 import Grid from '@material-ui/core/Grid';
 import StarIcon from '@material-ui/icons/StarBorder';
-import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
-import Link from '@material-ui/core/Link';
 import { makeStyles } from '@material-ui/core/styles';
 import Container from '@material-ui/core/Container';
-import Box from '@material-ui/core/Box';
-import TextField from '@material-ui/core/Box';
 import './App.css';
 
 
@@ -70,20 +64,17 @@ const useStyles = makeStyles(theme => ({
 const tiers = [
   {
     title: 'BPM',
-    description: ['Enter the value for how many Beats Per Minute you want your beat to be',
-                  'Ex: 120, 80, 250'],
+    description: ['Select Beats Per Minute'],
     buttonText: 'Contact us',
   },
   {
     title: 'Genre',
-    description: ['Enter which Genre you prefer for your beat',
-                  'Ex: Hip-Hop, Trap, Electronic, Lo-fi'],
+    description: ['Select Genre'],
     buttonText: 'Contact us',              
   },
   {
     title: 'Sub-Genre',
-    description: ['Enter which Sub-Genre you prefer for your beat',
-    'Ex: Hip-Hop, Trap, Electronic, Lo-fi'],
+    description: ['Select Sub-Genre'],
     buttonText: 'Contact us',
   },
 ];
@@ -96,23 +87,27 @@ export default function Pricing() {
     <React.Fragment>
       <CssBaseline />
 
-      <div className= "TextBPM">
-      <input
-            type="text"
-         />
+    <div className= "TextBPM">
+       <input type="range" min="1" max="100" value="50" class="slider" id="myRange"/>
+    </div>
+
+    <div className= "TextGenre">
+      <select>
+        <option value="Rap">Rap</option>
+        <option value="Hip-Hop">Hip-Hop</option>
+        <option value="Electronic">Electronic</option>
+        <option value="R and B">R&B</option>
+      </select>
       </div>
 
-      <div className= "TextGenre">
-      <input
-            type="text"
-         />
-      </div>
-
-      <div className= "TextSubGenre">
-      <input
-            type="text"
-         />
-      </div>
+    <div className= "TextSubGenre">
+            <select>
+        <option value="Rap">Rap</option>
+        <option value="Hip-Hop">Hip-Hop</option>
+        <option value="Electronic">Electronic</option>
+        <option value="R and B">R&B</option>
+      </select>
+    </div>
 
       <div className = "GenerateButton">
       <input type="button" value="Generate Song!" onclick="msg()"/>
