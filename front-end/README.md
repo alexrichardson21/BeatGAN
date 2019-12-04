@@ -10,7 +10,7 @@
 `Temp`
 `Album Art`
 
-#### The Album Art parameter is a future plan, where a Generative Adversarial network would be able to generate album cover art based on the sounds it creates through yung gan.
+#### The Album Art parameter is a future plan, where a Generative Adversarial Network would be able to generate album cover art based on the sounds it creates through yung gan.
 
 `We hosted the python program on a GPU Powered EC2 Virtual Machine. By having Amazon APIGW point to http endpoints on our EC2, our React code can send fetch calls to the EC2 our program is stored in. We also need nginx within the EC2, that converts URLs into executable code on the EC2 server.`
 
