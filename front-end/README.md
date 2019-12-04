@@ -2,7 +2,7 @@
 ### Authors: Alex Richardson & Joshua Patterson
 A Generative Adversarial Network that trains models to generate AI constructed music instrumentals. Consists 
 of a library of 10,000 soundcloud/youtube instruments, which are used to train the network. Created
-using tensorflow and keras, a deep learning python library. Front-End is created using React.
+using tensorflow and keras, a deep learning python library. Front-End is created using React. (add node_module files in your directory to run)
 
 ![yungganposter](yungganposter2.png)
 
