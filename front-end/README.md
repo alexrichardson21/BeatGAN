@@ -1,5 +1,7 @@
 ## Yung Gan
 ### Authors: Alex Richardson & Joshua Patterson
+`Be sure to add node_modules into your directory before running`
+
 #### Our current UI is tentative until we are able to train new models within our python backend. We are currently working with only 3 Parameters:
 `BPM`
 `Genre`
