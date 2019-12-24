@@ -396,8 +396,9 @@ class BeatGAN():
                 negative_y = -positive_y
                 dummy_y = np.zeros((half_batch, 1))
 
-                batch_d_losses += [self.critic_model.train_on_batch([songs, noise],
-                                                              [positive_y, negative_y, dummy_y])]
+                batch_d_losses += [self.critic_model.train_on_batch(
+                                    [songs, noise],
+                                    [positive_y, negative_y, dummy_y])]
 
             # ---------------------
             #  Train Generator
