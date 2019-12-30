@@ -285,6 +285,16 @@ class AudioGod():
 
         return songs[:len_songs]
 
+    def sample_rates(self, file_format='wav'):
+        for filename in glob.iglob('datasets/yung_gan/120bpm/slices/*.wav'):
+            for sample_rate in [64, 256, 1024, 4096, 16384, 65536]:
+                _, extension = os.path.splitext(filename)
+                basename = os.path.basename(filename).replace(extension, "")
+                new_filename = 'datasets/yung_gan/120bpm/slices/%d/' % sample_rate + basename + extension
+                tfm = sox.Transformer()
+                tfm.rate(samplerate=sample_rate//2)
+                tfm.build(filename, new_filename)
+
     # DEPRECATED
     def start_songs_at_first_beat(self):
 
@@ -418,6 +428,6 @@ class AudioGod():
 
 if __name__ == "__main__":
     ag = AudioGod('yung_gan', 120, 1, (210, 1, 420))
-    ag.slice_songs_by_bars()
+    ag.sample_rates()
     # ag.preprocess()
     # ag.load_slices()

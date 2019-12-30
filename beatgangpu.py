@@ -201,6 +201,12 @@ class BeatGAN():
         model.add(Activation('relu'))
 
         # Output
+        def iFFT(x):
+            real, imag = tf.split(x, 2, axis=-1)
+            x = tf.complex(real, imag)
+            x = tf.squeeze(x, axis=[-1])
+            x = tf.spectral.irfft(x)
+            return x
         model.add(
             Conv2DTranspose(
                 filters=self.channels,
@@ -209,6 +215,7 @@ class BeatGAN():
                 padding='same',
                 use_bias=False,
             ))
+        # model.add(Lambda(iFFT))
         model.add(Activation('tanh'))
 
         model.summary()
@@ -396,8 +403,9 @@ class BeatGAN():
                 negative_y = -positive_y
                 dummy_y = np.zeros((half_batch, 1))
 
-                batch_d_losses += [self.critic_model.train_on_batch([songs, noise],
-                                                              [positive_y, negative_y, dummy_y])]
+                batch_d_losses += [self.critic_model.train_on_batch(
+                                    [songs, noise],
+                                    [positive_y, negative_y, dummy_y])]
 
             # ---------------------
             #  Train Generator

@@ -5,6 +5,14 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "PGGAN",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/pggan.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+    },
+    {
       "name": "BeatGAN 120bpm",
       "type": "python",
       "request": "launch",
@@ -28,7 +36,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/audio_god.py",
       "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}"
     },
     {
       "name": "Python: Current File",
