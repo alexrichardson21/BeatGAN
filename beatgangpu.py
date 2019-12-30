@@ -42,8 +42,8 @@ class BeatGAN():
         self.sample_rate = 44100
         self.samples_per_bar = self.sample_rate * 60 // self.bpm * 4
 
-        self.ngf = 32
-        self.ndf = 32
+        self.ngf = 16
+        self.ndf = 16
         self.noise = 100
 
         self.wave_shape = (self.samples_per_bar, self.bars, self.channels)
@@ -251,6 +251,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
                 input_shape=self.wave_shape
             ))
         # model.add(BatchNormalization(momentum=0.8))
@@ -267,6 +268,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
             ))
         # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
@@ -282,6 +284,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
             ))
         # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
@@ -297,6 +300,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
             ))
         # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
@@ -312,6 +316,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
             ))
         # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
@@ -327,6 +332,7 @@ class BeatGAN():
                 strides=s,
                 padding='same',
                 use_bias=False,
+                kernel_initializer='he_normal',
             ))
         # model.add(BatchNormalization(momentum=0.8))
         model.add(LeakyReLU(0.2))
@@ -336,6 +342,7 @@ class BeatGAN():
 
         # Output
         model.add(Flatten())
+        model.add(Dropout(.2))
         model.add(Dense(1))
 
         model.summary()
@@ -422,12 +429,12 @@ class BeatGAN():
                 self.critic_model.save(
                     'E:/models/beat_gan_lstm_discriminator.h5')
 
-        # Plot Loss Graph
-        plt.plot(range(epochs), d_losses)
-        plt.plot(range(epochs), g_losses)
-        plt.ylabel('Loss')
-        plt.xlabel('Epoch')
-        plt.savefig('loss_graph.png')
+                # Plot Loss Graph
+                plt.plot(range(epochs), d_losses)
+                plt.plot(range(epochs), g_losses)
+                plt.ylabel('Loss')
+                plt.xlabel('Epoch')
+                plt.savefig('loss_graph.png')
 
     def save_beats(self, epoch, dataset):
         NUM_BEATS = 10
