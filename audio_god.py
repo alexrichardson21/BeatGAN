@@ -286,12 +286,13 @@ class AudioGod():
         return songs[:len_songs]
 
     def sample_rates(self, file_format='wav'):
-        for filename in glob.iglob('E:/datasets/yung_gan/120bpm/slices/*.wav'):
-            for sample_rate in [32, 128, 512, 2048, 8192, 32768]:
-                new_filename = filename + "/%d" % sample_rate
+        for filename in glob.iglob('datasets/yung_gan/120bpm/slices/*.wav'):
+            for sample_rate in [64, 256, 1024, 4096, 16384, 65536]:
+                _, extension = os.path.splitext(filename)
+                basename = os.path.basename(filename).replace(extension, "")
+                new_filename = 'datasets/yung_gan/120bpm/slices/%d/' % sample_rate + basename + extension
                 tfm = sox.Transformer()
-                tfm.convert(samplerate=sample_rate,
-                            n_channels=self.channels, bitdepth=self.bit_depth)
+                tfm.rate(samplerate=sample_rate//2)
                 tfm.build(filename, new_filename)
 
     # DEPRECATED
